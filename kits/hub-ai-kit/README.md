@@ -19,6 +19,10 @@ Skills, subagentes, hooks, reglas y CI para trabajar con Claude Code. Sin nombre
 
 Skill manual `/feature-flow <descripción>`: parte el trabajo en hasta 3 features y deja `docs/features/<slug>/{SPEC,STATE,HANDOFF}.md` commiteados. Por defecto no abre sesiones; imprime `claude -w <slug> -n <slug>`. El hook `rehydrate` inyecta HANDOFF y STATE al arrancar en la rama o worktree de la feature. `scripts/launch.cjs --launch` abre una sesión en segundo plano con topes (2 simultáneas, 3 por día, 10 min de espera; techos 3, 6 y 5 min no modificables por configuración), y el hook `session-guard` bloquea `claude --bg`, `-w` y `-p` fuera de ese lanzador. Configuración opcional: `.claude/feature-flow.json` con `maxConcurrent`, `maxPerDay`, `cooldownMinutes`.
 
+## Cierre de feature (`feature-close`)
+
+Skill manual `/feature-close [slug]`, en una corrida: `collect.cjs --run` junta commits, archivos, SPEC, decisiones y resultado de typecheck/lint/test (si algo falla, no escribe nada); escribe `docs/CHANGELOG.md` (historial) y `docs/design/<slug>.md` (diseño tal como quedó, con "Diferencias contra el SPEC" y "Sin verificar"); `verify.cjs` valida secciones, rutas citadas, GUIDs y términos privados; marca el STATE como cerrado y commitea solo docs.
+
 ## Instalación (Windows, macOS o Linux)
 
 Requisitos: Node 18+, git y Claude Code instalados. Todo el kit usa Node, así que los comandos son los mismos en cualquier sistema.

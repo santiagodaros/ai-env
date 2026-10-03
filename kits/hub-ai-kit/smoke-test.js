@@ -233,9 +233,53 @@ if (fs.existsSync(rh) && git.status === 0) {
   fs.rmSync(tmp, { recursive: true, force: true });
 }
 
+// --- feature-close (hechos y verificación de los documentos de cierre)
+const fcDir = path.join(repo, '.claude', 'skills', 'feature-close', 'scripts');
+if (fs.existsSync(path.join(fcDir, 'collect.cjs')) && git.status === 0) {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'kit-fc-'));
+  const sh = (a) => spawnSync('git', a, { cwd: tmp, encoding: 'utf8', shell: process.platform === 'win32' });
+  const W = (f, t) => { fs.mkdirSync(path.dirname(path.join(tmp, f)), { recursive: true }); fs.writeFileSync(path.join(tmp, f), t); };
+  const C = (script, argv = []) => {
+    const r = spawnSync(process.execPath, [path.join(fcDir, script), ...argv], { cwd: tmp, encoding: 'utf8' });
+    lastOut = `${r.stdout || ''}${r.stderr || ''}`; return { code: r.status, out: lastOut };
+  };
+  sh(['init', '-q']); sh(['config', 'user.email', 't@example.com']); sh(['config', 'user.name', 't']);
+  W('README.md', 'base'); sh(['add', '.']); sh(['commit', '-q', '-m', 'base']); sh(['branch', '-M', 'main']);
+  sh(['checkout', '-q', '-b', 'feature/foo']);
+  W('docs/features/foo/SPEC.md', '# SPEC\n## Objetivo\nx\n## Fuera de alcance\nNo toca el login.\n');
+  W('docs/features/foo/STATE.md', '# STATE\n\nEstado: en curso\n\n## Decisiones\n- usar cola\n');
+  W('docs/features/foo/HANDOFF.md', 'h');
+  sh(['add', '.']); sh(['commit', '-q', '-m', 'docs de la feature']);
+  let r = C('collect.cjs');
+  check('feature-close: sin commits de código rechaza', r.code === 1 && /solo tocan los docs|nada que documentar/.test(r.out), `exit=${r.code}`);
+  W('src/cola.ts', 'export const q = 1;\n'); sh(['add', '.']); sh(['commit', '-q', '-m', 'agrega cola']);
+  r = C('collect.cjs');
+  check('feature-close: collect arma los FACTS (archivo, commit, fuera de alcance, decisión)', r.code === 0 && r.out.includes('`src/cola.ts`') && r.out.includes('agrega cola') && r.out.includes('No toca el login') && r.out.includes('usar cola'), `exit=${r.code}`);
+  check('feature-close: collect no cuenta los docs de la feature como cambios', !r.out.includes('docs/features/foo/SPEC.md'));
+  W('stray.txt', 'x');
+  check('feature-close: cambios sin commitear fuera de docs rechazan', C('collect.cjs').code === 1);
+  fs.rmSync(path.join(tmp, 'stray.txt'));
+  check('feature-close: verify rechaza si faltan los documentos', C('verify.cjs').code === 1);
+  const design = (extra = '') => '# F\n## Resumen\nr\n## Flujo de punta a punta\n1. `src/cola.ts` encola.\n## Componentes y archivos\n| `src/cola.ts` | cola |\n## Configuración\nNinguna\n## Cómo verificar\nnpm test\n## Diferencias contra el SPEC\nNinguna\n## Sin verificar\nNinguna\n' + extra;
+  const clog = '# Changelog\n## Sin publicar\n<!-- feature:foo -->\n### Cola\n- **Agregado:** cola\n';
+  W('docs/design/foo.md', design()); W('docs/CHANGELOG.md', clog);
+  check('feature-close: verify rechaza si el STATE no está cerrado', C('verify.cjs').code === 1);
+  W('docs/features/foo/STATE.md', '# STATE\n\nEstado: cerrada (2026-10-03)\n');
+  r = C('verify.cjs');
+  check('feature-close: verify acepta documentos completos', r.code === 0, `exit=${r.code}`);
+  W('docs/design/foo.md', design('Usa `src/no-existe.ts`.\n'));
+  r = C('verify.cjs');
+  check('feature-close: verify detecta una ruta citada que no existe', r.code === 1 && r.out.includes('src/no-existe.ts'), `exit=${r.code}`);
+  W('docs/design/foo.md', design('Tenant 3f2504e0-4f89-41d3-9a0c-0305e82c3301.\n'));
+  check('feature-close: verify detecta GUID de tenant', C('verify.cjs').code === 1);
+  W('docs/design/foo.md', design().replace('## Sin verificar\nNinguna\n', '## Sin verificar\n'));
+  check('feature-close: verify detecta sección vacía', C('verify.cjs').code === 1);
+  fs.rmSync(tmp, { recursive: true, force: true });
+} else add('AVISO', 'feature-close no probado', 'falta el archivo o git');
+
 // --- Skills y subagentes
 const fm = (p) => fs.existsSync(p) && fs.readFileSync(p, 'utf8').replace(/^\uFEFF/, '').startsWith('---');
-for (const s of ['app-architecture-review', 'pr-prep', 'spec-interview', 'feature-flow']) {
+for (const s of ['app-architecture-review', 'pr-prep', 'spec-interview', 'feature-flow', 'feature-close']) {
   check(`skill del repo: ${s}`, fm(path.join(repo, '.claude', 'skills', s, 'SKILL.md')));
 }
 for (const a of ['reviewer', 'explorer']) check(`subagente: ${a}`, fm(path.join(repo, '.claude', 'agents', `${a}.md`)));

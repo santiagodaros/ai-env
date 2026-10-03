@@ -62,6 +62,7 @@ Orden típico: `redesign` → `brand-intake` → `product-map` → `design-direc
 | `pr-prep` | skill | manual | Corre las verificaciones, revisa el diff contra las invariantes del proyecto y redacta la descripción del PR |
 | `spec-interview` | skill | manual | Te entrevista para definir una feature grande y escribe un `SPEC.md` autocontenido antes de implementar |
 | `feature-flow` | skill | manual | Parte un trabajo grande en hasta 3 features, crea `docs/features/<slug>/` con `SPEC.md`, `STATE.md` y `HANDOFF.md`, y te da el comando para retomarla en una sesión nueva. Abrir sesiones en segundo plano es opcional y tiene límites duros (ver abajo) |
+| `feature-close` | skill | manual | Cierra una feature en una corrida: corre typecheck, lint y test; escribe la entrada de `docs/CHANGELOG.md` y el diseño final de punta a punta en `docs/design/<slug>.md` desde los hechos del diff (`collect.cjs`); los valida (`verify.cjs`: secciones completas, rutas citadas que existan, sin GUIDs ni términos privados); marca el STATE como cerrado y commitea solo docs. No cierra si algo falla |
 | `reviewer` | subagente | auto | Revisor independiente en contexto limpio para cambios de alto riesgo (identidad, permisos, secretos, APIs de Microsoft). Para antes de mergear o entregar, no para cada commit |
 | `explorer` | subagente | auto | Explorador de solo lectura: rastrea dónde se usa una credencial, endpoint o permiso y devuelve solo la conclusión, para no llenar tu contexto |
 
