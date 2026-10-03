@@ -144,7 +144,8 @@ claude agents --json    # anotá el campo "kind" de la sesión lanzada
 ## 7. security-diff y adr
 
 ```powershell
-Add-Content src\demo.ts 'const k = "AKIAABCDEFGHIJKLMNOP";'
+$k = 'AK' + 'IA' + 'ABCDEFGHIJKLMNOP'
+Add-Content src\demo.ts "const k = `"$k`";"
 git add -A
 node .claude\skills\security-diff\scripts\secscan.cjs
 ```
