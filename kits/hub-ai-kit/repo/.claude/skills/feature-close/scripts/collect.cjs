@@ -2,6 +2,7 @@
 // Junta los hechos verificables de una feature: commits, archivos cambiados, SPEC, decisiones y resultado de typecheck/lint/test.
 // Uso: node collect.cjs [--slug <slug>] [--base <ref>] [--run]
 const { run, git, repoRoot, resolveSlug, baseRef, fs, path } = require('./lib.cjs');
+const { testGate } = require('./gates.cjs');
 const argv = process.argv.slice(2);
 const val = n => { const i = argv.indexOf(n); return i >= 0 ? argv[i + 1] : undefined; };
 const fail = m => { console.error('RECHAZADO: ' + m); process.exit(1); };
@@ -15,7 +16,7 @@ const mb = git(root, ['merge-base', 'HEAD', base]).stdout.trim();
 if (!mb) fail(`no hay ancestro común entre HEAD y ${base}.`);
 const head = git(root, ['rev-parse', 'HEAD']).stdout.trim();
 if (mb === head) fail(`no hay commits nuevos respecto de ${base}: nada que documentar.`);
-if (git(root, ['status', '--porcelain', '--untracked-files=all']).stdout.split('\n').some(l => l.trim() && !/docs\/(features\/|design\/|CHANGELOG)/.test(l))) {
+if (git(root, ['status', '--porcelain', '--untracked-files=all']).stdout.split('\n').some(l => l.trim() && !/docs\/(features\/|design\/|CHANGELOG)|\.claude\/\.feature-flow\//.test(l))) {
   fail('hay cambios sin commitear fuera de docs/. Commiteá o descartá antes de cerrar la feature.');
 }
 
@@ -44,6 +45,16 @@ for (const n of names) {
   } else results.push(`- \`npm run ${n}\`: existe, no se corrió (agregá --run)`);
 }
 
+const tg = testGate(files, state);
+let consumo = '(sin medición)';
+try {
+  const bp = path.join(__dirname, '..', '..', 'budget-plan', 'scripts', 'budget.cjs');
+  if (fs.existsSync(bp)) {
+    const b = run(process.execPath, [bp, 'end', slug, '--json'], { cwd: root, shell: false });
+    consumo = (JSON.parse(b.stdout || '{}').text) || consumo;
+  }
+} catch { /* sin medición */ }
+
 const out = [
   `# FACTS — ${slug}`,
   `Generado por collect.cjs. Es la única fuente permitida para describir cambios: lo que no esté acá o en el código, va como "sin verificar".`,
@@ -62,10 +73,12 @@ const out = [
   '',
   '## Decisiones registradas (del STATE)', section(state, /decisiones/) || '(ninguna registrada)',
   '',
+  '## Pruebas (compuerta)', `- ${tg.ok ? 'OK' : 'FALLA'}: ${tg.note}`, ...(tg.waiver ? [`- Sin pruebas (exención declarada): ${tg.waiver}`] : []), '',
+  '## Consumo medido', consumo, '',
   '## Verificaciones', ...(results.length ? results : ['- (sin scripts typecheck/lint/test en package.json)']),
   '',
 ].join('\n');
 const dir = path.join(root, '.claude', '.feature-flow'); fs.mkdirSync(dir, { recursive: true });
 const dest = path.join(dir, `${slug}-facts.md`); fs.writeFileSync(dest, out);
 process.stdout.write(out + `\nGuardado en ${path.relative(root, dest).replace(/\\/g, '/')}\n`);
-process.exit(results.some(r => r.includes('FALLA')) ? 3 : 0);
+process.exit(results.some(r => r.includes('FALLA')) || !tg.ok ? 3 : 0);

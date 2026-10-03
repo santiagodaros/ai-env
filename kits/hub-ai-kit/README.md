@@ -23,6 +23,12 @@ Skill manual `/feature-flow <descripción>`: parte el trabajo en hasta 3 feature
 
 Skill manual `/feature-close [slug]`, en una corrida: `collect.cjs --run` junta commits, archivos, SPEC, decisiones y resultado de typecheck/lint/test (si algo falla, no escribe nada); escribe `docs/CHANGELOG.md` (historial) y `docs/design/<slug>.md` (diseño tal como quedó, con "Diferencias contra el SPEC" y "Sin verificar"); `verify.cjs` valida secciones, rutas citadas, GUIDs y términos privados; marca el STATE como cerrado y commitea solo docs.
 
+## Una corrida de punta a punta (`feature-run`) y presupuesto (`budget-plan`)
+
+`/feature-run <descripción o slug>` encadena `feature-flow`, la implementación, la compuerta de pruebas, `feature-close` y la descripción del PR (`PR.md`). `scripts/stage.cjs` decide la etapa desde archivos y git, así que una corrida cortada se retoma sola. Paradas: SPEC sin aprobar, sin presupuesto, tests rojos tras 2 intentos, y push o PR sin tu sí.
+
+`/budget-plan` lee el consumo del límite de 5 h que guarda la statusline del kit en `~/.claude/.budget/latest.json` (solo Pro/Max), estima lo que necesita una feature con las que ya mediste y propone ejecutar ahora, justo o en rebanadas. Sin historial no inventa: lo dice. Configuración opcional: `.claude/budget.json` (`reservePct`, `safetyFactor`). Necesitás tener instalada la statusline (`personal/settings.snippet.json`).
+
 ## Instalación (Windows, macOS o Linux)
 
 Requisitos: Node 18+, git y Claude Code instalados. Todo el kit usa Node, así que los comandos son los mismos en cualquier sistema.

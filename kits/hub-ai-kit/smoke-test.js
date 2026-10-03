@@ -189,6 +189,12 @@ fs.appendFileSync(process.env.FAKE_LOG,JSON.stringify(a)+'\\n');console.log('id 
   commit(d);
   let r = L(d, ['--slug', 'foo']);
   check('launch: dry-run no lanza nada', r.code === 0 && r.out.includes('Dry-run') && !fs.existsSync(log), `exit=${r.code}`);
+  const bd = fs.mkdtempSync(path.join(os.tmpdir(), 'kit-lb-'));
+  fs.writeFileSync(path.join(bd, 'latest.json'), JSON.stringify({ at: Date.now(), fiveHour: { pct: 95, resetsAt: Math.floor(Date.now() / 1000) + 7200 }, sevenDay: null }));
+  r = L(d, ['--slug', 'foo', '--launch'], { CLAUDE_BUDGET_DIR: bd });
+  check('launch: sin margen en el límite de 5 h no lanza', r.code === 1 && /SIN MARGEN/.test(r.out) && !fs.existsSync(log), `exit=${r.code}`);
+  check('launch: el dry-run informa el presupuesto', L(d, ['--slug', 'foo'], { CLAUDE_BUDGET_DIR: bd }).out.includes('Presupuesto'));
+  fs.rmSync(bd, { recursive: true, force: true });
   check('launch: slug inválido rechazado', L(d, ['--slug', '../x']).code === 1);
   check('launch: sesión hija rechazada', L(d, ['--slug', 'foo', '--launch'], { FEATURE_FLOW_CHILD: '1' }).code === 1);
   check('launch: sin poder contar sesiones, no lanza (falla cerrado)', L(d, ['--slug', 'foo', '--launch'], { FAKE_AGENTS: 'basura' }).code === 1 && !fs.existsSync(log));
@@ -246,13 +252,27 @@ if (fs.existsSync(path.join(fcDir, 'collect.cjs')) && git.status === 0) {
   sh(['init', '-q']); sh(['config', 'user.email', 't@example.com']); sh(['config', 'user.name', 't']);
   W('README.md', 'base'); sh(['add', '.']); sh(['commit', '-q', '-m', 'base']); sh(['branch', '-M', 'main']);
   sh(['checkout', '-q', '-b', 'feature/foo']);
-  W('docs/features/foo/SPEC.md', '# SPEC\n## Objetivo\nx\n## Fuera de alcance\nNo toca el login.\n');
+  W('docs/features/foo/SPEC.md', '# SPEC\n## Objetivo\n' + 'Agregar una cola de trabajos para procesar tareas largas sin bloquear la API. '.repeat(3) + '\n## Fuera de alcance\nNo toca el login.\n');
   W('docs/features/foo/STATE.md', '# STATE\n\nEstado: en curso\n\n## Decisiones\n- usar cola\n');
   W('docs/features/foo/HANDOFF.md', 'h');
   sh(['add', '.']); sh(['commit', '-q', '-m', 'docs de la feature']);
   let r = C('collect.cjs');
   check('feature-close: sin commits de código rechaza', r.code === 1 && /solo tocan los docs|nada que documentar/.test(r.out), `exit=${r.code}`);
+  const S = (slug) => { const x = spawnSync(process.execPath, [path.join(repo, '.claude', 'skills', 'feature-run', 'scripts', 'stage.cjs'), '--slug', slug], { cwd: tmp, encoding: 'utf8' }); lastOut = `${x.stdout}${x.stderr}`; try { return JSON.parse(x.stdout).stage; } catch { return 'error'; } };
+  check('feature-run: sin documentos la etapa es spec', S('bar') === 'error' || S('bar') === 'spec');
+  check('feature-run: con SPEC corto la etapa es spec', (() => { W('docs/features/baz/SPEC.md', 'corto'); W('docs/features/baz/STATE.md', 's'); W('docs/features/baz/HANDOFF.md', 'h'); return S('baz') === 'spec'; })());
+  fs.rmSync(path.join(tmp, 'docs', 'features', 'baz'), { recursive: true, force: true });
+  check('feature-run: sin commits de código la etapa es implement', S('foo') === 'implement');
   W('src/cola.ts', 'export const q = 1;\n'); sh(['add', '.']); sh(['commit', '-q', '-m', 'agrega cola']);
+  r = C('collect.cjs');
+  check('feature-close: la compuerta rechaza código sin pruebas', r.code === 3 && /ningún archivo de prueba/.test(r.out), `exit=${r.code}`);
+  check('feature-run: código sin pruebas queda en la etapa tests', S('foo') === 'tests');
+  W('docs/features/foo/STATE.md', '# STATE\n\nEstado: en curso\nSin pruebas: es solo una constante de ejemplo\n\n## Decisiones\n- usar cola\n');
+  r = C('collect.cjs');
+  check('feature-close: una exención declarada pasa y queda registrada', r.code === 0 && r.out.includes('exención declarada'), `exit=${r.code}`);
+  W('docs/features/foo/STATE.md', '# STATE\n\nEstado: en curso\n\n## Decisiones\n- usar cola\n');
+  W('src/cola.test.ts', 'test("q", () => {});\n'); sh(['add', '.']); sh(['commit', '-q', '-m', 'prueba de cola']);
+  check('feature-run: con pruebas y sin cierre la etapa es close', S('foo') === 'close');
   r = C('collect.cjs');
   check('feature-close: collect arma los FACTS (archivo, commit, fuera de alcance, decisión)', r.code === 0 && r.out.includes('`src/cola.ts`') && r.out.includes('agrega cola') && r.out.includes('No toca el login') && r.out.includes('usar cola'), `exit=${r.code}`);
   check('feature-close: collect no cuenta los docs de la feature como cambios', !r.out.includes('docs/features/foo/SPEC.md'));
@@ -267,6 +287,11 @@ if (fs.existsSync(path.join(fcDir, 'collect.cjs')) && git.status === 0) {
   W('docs/features/foo/STATE.md', '# STATE\n\nEstado: cerrada (2026-10-03)\n');
   r = C('verify.cjs');
   check('feature-close: verify acepta documentos completos', r.code === 0, `exit=${r.code}`);
+  check('feature-run: documentos cerrados sin PR.md la etapa es pr', S('foo') === 'pr');
+  r = C('pr-body.cjs');
+  const prmd = fs.existsSync(path.join(tmp, 'docs', 'features', 'foo', 'PR.md')) ? fs.readFileSync(path.join(tmp, 'docs', 'features', 'foo', 'PR.md'), 'utf8') : '';
+  check('feature-close: pr-body arma título y secciones desde los documentos', r.code === 0 && prmd.includes('<!-- title: Cola -->') && prmd.includes('## Cómo verificar') && prmd.includes('## Verificaciones'), `exit=${r.code}`);
+  check('feature-run: con PR.md la etapa es done', S('foo') === 'done');
   W('docs/design/foo.md', design('Usa `src/no-existe.ts`.\n'));
   r = C('verify.cjs');
   check('feature-close: verify detecta una ruta citada que no existe', r.code === 1 && r.out.includes('src/no-existe.ts'), `exit=${r.code}`);
@@ -277,9 +302,45 @@ if (fs.existsSync(path.join(fcDir, 'collect.cjs')) && git.status === 0) {
   fs.rmSync(tmp, { recursive: true, force: true });
 } else add('AVISO', 'feature-close no probado', 'falta el archivo o git');
 
+// --- presupuesto del límite de 5 h (statusline -> latest.json -> budget.cjs)
+const slPath = path.join(__dirname, 'personal', 'statusline.cjs');
+const bpPath = path.join(repo, '.claude', 'skills', 'budget-plan', 'scripts', 'budget.cjs');
+if (fs.existsSync(slPath) && fs.existsSync(bpPath) && git.status === 0) {
+  const bdir = fs.mkdtempSync(path.join(os.tmpdir(), 'kit-bd-'));
+  const proj = fs.mkdtempSync(path.join(os.tmpdir(), 'kit-bp-'));
+  spawnSync('git', ['init', '-q'], { cwd: proj, shell: process.platform === 'win32' });
+  const inFuture = Math.floor(Date.now() / 1000) + 3 * 3600;
+  const feed = (pct, resets = inFuture) => {
+    const r = spawnSync(process.execPath, [slPath], { input: JSON.stringify({ model: { display_name: 'M' }, session_id: 's1', cost: { total_cost_usd: 1.5 }, rate_limits: { five_hour: { used_percentage: pct, resets_at: resets }, seven_day: { used_percentage: 20, resets_at: resets + 99999 } } }), encoding: 'utf8', env: { ...process.env, CLAUDE_BUDGET_DIR: bdir } });
+    lastOut = r.stdout || ''; return r.stdout || '';
+  };
+  const B = (argv) => { const r = spawnSync(process.execPath, [bpPath, ...argv, '--json'], { cwd: proj, encoding: 'utf8', env: { ...process.env, CLAUDE_BUDGET_DIR: bdir } }); lastOut = `${r.stdout}${r.stderr}`; let j = {}; try { j = JSON.parse(r.stdout); } catch { /* texto */ } return { code: r.status, j }; };
+  let o = feed(40);
+  check('statusline: muestra 5h y reinicio', o.includes('5h 40%') && o.includes('reinicia en'), o.trim());
+  check('statusline: guarda la foto en latest.json', fs.existsSync(path.join(bdir, 'latest.json')));
+  check('budget: status calcula el libre', B(['status']).j.freePct === 60);
+  check('budget: sin historial el plan lo dice y no inventa', B(['plan']).j.status === 'sin-estimacion');
+  const meas = (slug, a, b) => { feed(a); B(['start', slug]); feed(b); return B(['end', slug]).j; };
+  check('budget: mide una feature (start/end)', meas('f1', 10, 25).deltaPct === 15);
+  meas('f2', 25, 55); meas('f3', 55, 70); // 30 y 15
+  const est = B(['estimate']).j;
+  check('budget: estimación con 3 medidas = p75', est.n === 3 && est.pct === 30, JSON.stringify(est));
+  feed(20); check('budget: alcanza con margen', B(['plan']).j.status === 'alcanza');
+  feed(55); check('budget: justo', B(['plan']).j.status === 'justo');
+  feed(75);
+  let p = B(['plan']); check('budget: no alcanza y propone rebanadas', p.j.status === 'no-alcanza' && /rebanadas/.test(p.j.text), p.j.status);
+  check('budget: check sale con código 4 si no alcanza', B(['check']).code === 4);
+  feed(95); check('budget: sin margen bajo la reserva', B(['plan']).j.status === 'sin-margen');
+  feed(30, Math.floor(Date.now() / 1000) + 600); B(['start', 'f4']); feed(5, Math.floor(Date.now() / 1000) + 5 * 3600);
+  check('budget: una medición que cruza el reinicio se descarta', B(['end', 'f4']).j.valid === false);
+  fs.rmSync(path.join(bdir, 'latest.json'));
+  check('budget: sin datos no inventa', B(['plan']).j.status === 'sin-datos' && B(['plan']).code === 0);
+  fs.rmSync(bdir, { recursive: true, force: true }); fs.rmSync(proj, { recursive: true, force: true });
+} else add('AVISO', 'presupuesto no probado', 'falta statusline, budget.cjs o git');
+
 // --- Skills y subagentes
 const fm = (p) => fs.existsSync(p) && fs.readFileSync(p, 'utf8').replace(/^\uFEFF/, '').startsWith('---');
-for (const s of ['app-architecture-review', 'pr-prep', 'spec-interview', 'feature-flow', 'feature-close']) {
+for (const s of ['app-architecture-review', 'pr-prep', 'spec-interview', 'feature-flow', 'feature-close', 'feature-run', 'budget-plan']) {
   check(`skill del repo: ${s}`, fm(path.join(repo, '.claude', 'skills', s, 'SKILL.md')));
 }
 for (const a of ['reviewer', 'explorer']) check(`subagente: ${a}`, fm(path.join(repo, '.claude', 'agents', `${a}.md`)));

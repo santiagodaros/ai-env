@@ -62,10 +62,22 @@ const last = reg.length ? Math.max(...reg.map(r => r.at)) : 0;
 if (now - last < cooldown * 60000) fail(`esperá ${Math.ceil((cooldown * 60000 - (now - last)) / 60000)} min desde el último lanzamiento (espera mínima ${cooldown} min).`);
 if (reg.some(r => r.slug === slug && now - r.at < DAY)) fail(`"${slug}" ya se lanzó en las últimas 24 h. Retomala con claude attach o claude -w ${slug}.`);
 
+// Presupuesto del límite de 5 h (si hay datos): rechaza con poco margen o si la feature no entra.
+let presupuesto = 'Presupuesto: sin datos del límite de 5 h.';
+{
+  const bp = path.join(__dirname, '..', '..', 'budget-plan', 'scripts', 'budget.cjs');
+  if (fs.existsSync(bp)) {
+    const b = run(process.execPath, [bp, 'check', slug, '--json'], { cwd: root, shell: false });
+    try { presupuesto = 'Presupuesto: ' + JSON.parse(b.stdout).text.replace(/\n/g, ' '); } catch { /* sin datos */ }
+    if (b.status === 4) fail(presupuesto);
+  }
+}
+
 const prompt = `Retoma la feature ${slug}: lee docs/features/${slug}/HANDOFF.md y SPEC.md y segui desde el proximo paso. No abras sesiones nuevas.`;
 const args = ['--bg', '-w', slug, '-n', slug, prompt];
 console.log(`Feature: ${slug}`);
 console.log(`Cupos: ${bg}/${maxConcurrent} en segundo plano, ${todayN}/${maxPerDay} lanzadas hoy, espera mínima ${cooldown} min.`);
+console.log(presupuesto);
 console.log(`Comando: claude --bg -w ${slug} -n ${slug} "${prompt}"`);
 console.log(`Alternativa manual (sin gastar cupo): claude -w ${slug} -n ${slug}`);
 if (!flag('--launch')) { console.log('Dry-run: no se lanzó nada. Agregá --launch para lanzar.'); process.exit(0); }

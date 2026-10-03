@@ -3,12 +3,20 @@ on: [push, pull_request]
 permissions: { contents: read }
 jobs:
   check:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
-      - run: node scripts/sync-plugins.cjs
       - name: Los plugins generados deben estar commiteados
-        run: git diff --exit-code
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          node scripts/sync-plugins.cjs
+          git diff --exit-code
       - run: node scripts/check.cjs
+      - name: Prueba de humo del kit (hooks, límites, gates, presupuesto)
+        run: node kits/hub-ai-kit/smoke-test.js

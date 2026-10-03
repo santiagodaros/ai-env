@@ -49,6 +49,11 @@ process.stdin.on('end', () => {
       .filter((s) => here === s || branch === s || branch.endsWith('/' + s) || branch.endsWith('-' + s) || cwd.replace(/\\/g, '/').includes('/worktrees/' + s));
     if (hits.length === 1) {
       const s = hits[0];
+      // Inicia la medición de consumo de esta feature (idempotente). Mejor esfuerzo: nunca rompe el arranque.
+      if (source !== 'compact') {
+        const bp = path.join(cwd, '.claude', 'skills', 'budget-plan', 'scripts', 'budget.cjs');
+        if (fs.existsSync(bp)) spawnSync(process.execPath, [bp, 'start', s], { cwd, encoding: 'utf8' });
+      }
       const state = read(path.join(featRoot, s, 'STATE.md'));
       const handoff = read(path.join(featRoot, s, 'HANDOFF.md'));
       out.push(
