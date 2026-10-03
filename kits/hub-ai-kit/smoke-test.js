@@ -168,7 +168,7 @@ fs.appendFileSync(process.env.FAKE_LOG,JSON.stringify(a)+'\\n');console.log('id 
   fs.writeFileSync(path.join(bin, 'claude'), `#!/bin/sh\nexec "${process.execPath}" "${fake}" "$@"\n`, { mode: 0o755 });
   fs.writeFileSync(path.join(bin, 'claude.cmd'), `@"${process.execPath}" "${fake}" %*\r\n`);
   const log = path.join(base, 'launches.log');
-  const sh = (cwd, a) => spawnSync('git', a, { cwd, encoding: 'utf8', shell: process.platform === 'win32' });
+  const sh = (cwd, a) => spawnSync('git', a, { cwd, encoding: 'utf8', shell: false });
   const mk = (name, specLen = 300) => {
     const d = path.join(base, name); fs.mkdirSync(d);
     sh(d, ['init', '-q']); sh(d, ['config', 'user.email', 't@example.com']); sh(d, ['config', 'user.name', 't']);
@@ -221,7 +221,7 @@ fs.appendFileSync(process.env.FAKE_LOG,JSON.stringify(a)+'\\n');console.log('id 
 // --- rehydrate de feature
 if (fs.existsSync(rh) && git.status === 0) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'kit-rf-'));
-  const sh = (a) => spawnSync('git', a, { cwd: tmp, encoding: 'utf8', shell: process.platform === 'win32' });
+  const sh = (a) => spawnSync('git', a, { cwd: tmp, encoding: 'utf8', shell: false });
   sh(['init', '-q']); sh(['config', 'user.email', 't@example.com']); sh(['config', 'user.name', 't']);
   fs.mkdirSync(path.join(tmp, 'docs', 'features', 'foo'), { recursive: true });
   fs.writeFileSync(path.join(tmp, 'docs', 'features', 'foo', 'STATE.md'), '# STATE-FOO\n');
@@ -243,7 +243,7 @@ if (fs.existsSync(rh) && git.status === 0) {
 const fcDir = path.join(repo, '.claude', 'skills', 'feature-close', 'scripts');
 if (fs.existsSync(path.join(fcDir, 'collect.cjs')) && git.status === 0) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'kit-fc-'));
-  const sh = (a) => spawnSync('git', a, { cwd: tmp, encoding: 'utf8', shell: process.platform === 'win32' });
+  const sh = (a) => spawnSync('git', a, { cwd: tmp, encoding: 'utf8', shell: false });
   const W = (f, t) => { fs.mkdirSync(path.dirname(path.join(tmp, f)), { recursive: true }); fs.writeFileSync(path.join(tmp, f), t); };
   const C = (script, argv = []) => {
     const r = spawnSync(process.execPath, [path.join(fcDir, script), ...argv], { cwd: tmp, encoding: 'utf8' });
@@ -308,7 +308,7 @@ const bpPath = path.join(repo, '.claude', 'skills', 'budget-plan', 'scripts', 'b
 if (fs.existsSync(slPath) && fs.existsSync(bpPath) && git.status === 0) {
   const bdir = fs.mkdtempSync(path.join(os.tmpdir(), 'kit-bd-'));
   const proj = fs.mkdtempSync(path.join(os.tmpdir(), 'kit-bp-'));
-  spawnSync('git', ['init', '-q'], { cwd: proj, shell: process.platform === 'win32' });
+  spawnSync('git', ['init', '-q'], { cwd: proj, shell: false });
   const inFuture = Math.floor(Date.now() / 1000) + 3 * 3600;
   const feed = (pct, resets = inFuture) => {
     const r = spawnSync(process.execPath, [slPath], { input: JSON.stringify({ model: { display_name: 'M' }, session_id: 's1', cost: { total_cost_usd: 1.5 }, rate_limits: { five_hour: { used_percentage: pct, resets_at: resets }, seven_day: { used_percentage: 20, resets_at: resets + 99999 } } }), encoding: 'utf8', env: { ...process.env, CLAUDE_BUDGET_DIR: bdir } });
@@ -356,6 +356,7 @@ else add('AVISO', 'statusline.cjs no instalado', 'corré install.js');
 const w = Math.max(...rows.map((r) => r.name.length));
 for (const r of rows) console.log(`${r.res.padEnd(6)} ${r.name.padEnd(w)}  ${r.detail}`);
 const fails = rows.filter((r) => r.res === 'FALLA').length;
+if (process.env.GITHUB_ACTIONS) for (const r of rows.filter((x) => x.res === 'FALLA')) console.log(`::error title=smoke-test::${r.name} | ${String(r.detail).replace(/[\r\n%]+/g, ' ').slice(0, 400)}`);
 const warns = rows.filter((r) => r.res === 'AVISO').length;
 console.log(`\nResultado: ${rows.filter((r) => r.res === 'PASA').length} pasan, ${fails} fallan, ${warns} avisos. Plataforma: ${process.platform}, Node ${process.versions.node}.`);
 process.exit(fails ? 1 : 0);

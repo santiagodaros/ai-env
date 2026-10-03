@@ -8,7 +8,7 @@ const argv = process.argv.slice(2);
 const cmd = argv[0], slug = argv[1] && !argv[1].startsWith('--') ? argv[1] : undefined, asJson = argv.includes('--json');
 const out = o => { if (asJson) console.log(JSON.stringify(o)); else console.log(o.text); };
 
-const root = (() => { const r = spawnSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8', shell: process.platform === 'win32' }); return r.status === 0 ? r.stdout.trim() : process.cwd(); })();
+const root = (() => { const r = spawnSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8', shell: false }); return r.status === 0 ? r.stdout.trim() : process.cwd(); })();
 const cfgFile = path.join(root, '.claude', 'budget.json');
 let cfg = { reservePct: 10, safetyFactor: 0.6, staleMinutes: 15 };
 try { cfg = { ...cfg, ...JSON.parse(fs.readFileSync(cfgFile, 'utf8')) }; } catch { /* defaults */ }

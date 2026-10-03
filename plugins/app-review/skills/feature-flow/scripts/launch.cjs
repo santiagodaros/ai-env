@@ -11,7 +11,7 @@ const argv = process.argv.slice(2);
 const flag = n => argv.includes(n);
 const val = n => { const i = argv.indexOf(n); return i >= 0 ? argv[i + 1] : undefined; };
 const fail = msg => { console.error('RECHAZADO: ' + msg); process.exit(1); };
-const run = (cmd, args, opts = {}) => spawnSync(cmd, args, { encoding: 'utf8', shell: process.platform === 'win32', ...opts });
+const run = (cmd, args, opts = {}) => spawnSync(cmd, args, { encoding: 'utf8', shell: process.platform === 'win32' && cmd !== 'git' && cmd !== process.execPath, ...opts });
 
 const slug = val('--slug');
 if (!slug || !/^[a-z0-9]+(-[a-z0-9]+){0,4}$/.test(slug) || slug.length > 40) fail('--slug inválido (minúsculas, números y guiones; hasta 5 palabras, 40 caracteres).');

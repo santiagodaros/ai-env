@@ -1,6 +1,6 @@
 // Utilidades compartidas de feature-close.
 const fs = require('fs'), path = require('path'), { spawnSync } = require('child_process');
-const run = (cmd, args, opts = {}) => spawnSync(cmd, args, { encoding: 'utf8', shell: process.platform === 'win32', ...opts });
+const run = (cmd, args, opts = {}) => spawnSync(cmd, args, { encoding: 'utf8', shell: process.platform === 'win32' && cmd !== 'git' && cmd !== process.execPath, ...opts });
 const git = (root, args) => run('git', args, { cwd: root });
 function repoRoot() {
   const r = run('git', ['rev-parse', '--show-toplevel']);
