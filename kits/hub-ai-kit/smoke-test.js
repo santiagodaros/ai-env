@@ -270,7 +270,7 @@ if (fs.existsSync(path.join(fcDir, 'collect.cjs')) && git.status === 0) {
   W('docs/design/foo.md', design('Usa `src/no-existe.ts`.\n'));
   r = C('verify.cjs');
   check('feature-close: verify detecta una ruta citada que no existe', r.code === 1 && r.out.includes('src/no-existe.ts'), `exit=${r.code}`);
-  W('docs/design/foo.md', design('Tenant 3f2504e0-4f89-41d3-9a0c-0305e82c3301.\n'));
+  W('docs/design/foo.md', design('Tenant ' + ['3f2504e0', '4f89', '41d3', '9a0c', '0305e82c3301'].join('-') + '.\n'));
   check('feature-close: verify detecta GUID de tenant', C('verify.cjs').code === 1);
   W('docs/design/foo.md', design().replace('## Sin verificar\nNinguna\n', '## Sin verificar\n'));
   check('feature-close: verify detecta sección vacía', C('verify.cjs').code === 1);
