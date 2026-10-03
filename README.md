@@ -15,6 +15,24 @@ O con el script: `bootstrap\bootstrap.ps1 -Repo santiagodaros/ai-env` (Windows) 
 
 Actualizar: `/plugin marketplace update ai-env`. Los plugins no declaran `version`, así que cada commit cuenta como versión nueva. Las skills quedan con prefijo de plugin (por ejemplo `front-studio:redesign`).
 
+## Sesiones por feature sin abusar
+
+`feature-flow` deja cada feature con su contexto en archivos, para continuarla en un chat nuevo con la relectura automática del hook `rehydrate`. Por defecto no abre ninguna sesión: te imprime `claude -w <slug> -n <slug>` para que la abras vos.
+
+Lanzar en segundo plano (`launch.cjs --launch`) es opcional y se rechaza si:
+
+| Condición | Tope por defecto | Techo fijo en el código |
+|---|---|---|
+| Sesiones en segundo plano vivas | 2 | 3 |
+| Lanzamientos por día | 3 | 6 |
+| Espera entre lanzamientos | 10 min | no baja de 5 min |
+| Misma feature en las últimas 24 h | rechazada | rechazada |
+| Documentos sin commitear o `SPEC.md` de menos de 200 caracteres | rechazada | rechazada |
+| Pedido desde una sesión que ya fue lanzada por el flujo | rechazada | rechazada |
+| No se puede contar las sesiones activas | rechazada | rechazada |
+
+Podés bajar los topes en `.claude/feature-flow.json`; no subirlos por encima del techo. Cada lanzamiento pide confirmación en pantalla. Con solo el plugin `app-review` (sin el kit) no están el hook `session-guard` ni la relectura automática: las barreras de `launch.cjs` siguen, pero el bloqueo de `claude --bg` directo no.
+
 ## Qué hace cada skill
 
 Convención: **manual** = solo se activa si la invocás vos (`/plugin:skill`); **auto** = Claude la carga solo cuando el pedido coincide con su descripción.
@@ -43,6 +61,7 @@ Orden típico: `redesign` → `brand-intake` → `product-map` → `design-direc
 | `app-architecture-review` | skill | auto | Revisa React, TypeScript y backend en tres lentes: identidad, seguridad y costo de llamadas a APIs (`references/identity.md`, `security.md`, `cost.md`). Se activa con "revisá este PR", "auditá esto" o cambios en autenticación, permisos o secretos |
 | `pr-prep` | skill | manual | Corre las verificaciones, revisa el diff contra las invariantes del proyecto y redacta la descripción del PR |
 | `spec-interview` | skill | manual | Te entrevista para definir una feature grande y escribe un `SPEC.md` autocontenido antes de implementar |
+| `feature-flow` | skill | manual | Parte un trabajo grande en hasta 3 features, crea `docs/features/<slug>/` con `SPEC.md`, `STATE.md` y `HANDOFF.md`, y te da el comando para retomarla en una sesión nueva. Abrir sesiones en segundo plano es opcional y tiene límites duros (ver abajo) |
 | `reviewer` | subagente | auto | Revisor independiente en contexto limpio para cambios de alto riesgo (identidad, permisos, secretos, APIs de Microsoft). Para antes de mergear o entregar, no para cada commit |
 | `explorer` | subagente | auto | Explorador de solo lectura: rastrea dónde se usa una credencial, endpoint o permiso y devuelve solo la conclusión, para no llenar tu contexto |
 
@@ -66,7 +85,8 @@ Los hooks necesitan rutas del proyecto, por eso no van como plugin: `kits/hub-ai
 |---|---|
 | Hook `protect-files` | Bloquea ediciones a `.git/`, lockfiles, `.env` (salvo `.env.example`) y contenido que parece un secreto |
 | Hook `stop-verify` | Antes de dar el trabajo por terminado corre typecheck y lint si hubo cambios, incluso en carpetas nuevas |
-| Hook `rehydrate` | Tras `/compact` reinyecta `docs/STATE.md` para no perder decisiones |
+| Hook `rehydrate` | Tras `/compact` reinyecta `docs/STATE.md`; al arrancar una sesión en la rama o worktree de una feature, inyecta su `HANDOFF.md` y `STATE.md` |
+| Hook `session-guard` | Bloquea que Claude abra sesiones por su cuenta (`claude --bg`, `-w`, `-p`) y exige confirmación humana para lanzar con `feature-flow` |
 | `deny` de lectura | Claude no lee `.env`, `.env.*` ni `secrets/` |
 | `.github/` | CodeQL, gitleaks, dependency review y Dependabot; opcional revisión de PR con Claude |
 | `rules/`, `CLAUDE.md` | Invariantes y reglas por capa (frontend, llamadas a API); las reglas solo cargan al tocar archivos que coinciden |

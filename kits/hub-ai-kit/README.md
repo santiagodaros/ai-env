@@ -15,6 +15,10 @@ Skills, subagentes, hooks, reglas y CI para trabajar con Claude Code. Sin nombre
 | CI | `security.yml` (CodeQL, gitleaks, dependency review), `dependabot.yml`; opcional `claude-review.yml` | Barrera real, sin IA o con revisión de PR |
 | Visibilidad | `personal/statusline.cjs` | Contexto usado, límite de 5 h y costo, siempre a la vista |
 
+## Sesiones por feature (`feature-flow`)
+
+Skill manual `/feature-flow <descripción>`: parte el trabajo en hasta 3 features y deja `docs/features/<slug>/{SPEC,STATE,HANDOFF}.md` commiteados. Por defecto no abre sesiones; imprime `claude -w <slug> -n <slug>`. El hook `rehydrate` inyecta HANDOFF y STATE al arrancar en la rama o worktree de la feature. `scripts/launch.cjs --launch` abre una sesión en segundo plano con topes (2 simultáneas, 3 por día, 10 min de espera; techos 3, 6 y 5 min no modificables por configuración), y el hook `session-guard` bloquea `claude --bg`, `-w` y `-p` fuera de ese lanzador. Configuración opcional: `.claude/feature-flow.json` con `maxConcurrent`, `maxPerDay`, `cooldownMinutes`.
+
 ## Instalación (Windows, macOS o Linux)
 
 Requisitos: Node 18+, git y Claude Code instalados. Todo el kit usa Node, así que los comandos son los mismos en cualquier sistema.

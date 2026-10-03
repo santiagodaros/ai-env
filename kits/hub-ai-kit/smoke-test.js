@@ -136,9 +136,106 @@ if (fs.existsSync(sv) && git.status === 0) {
   fs.rmSync(tmp, { recursive: true, force: true });
 } else add('AVISO', 'stop-verify no probado', 'falta el archivo o git');
 
+// --- session-guard y feature-flow (límites contra abrir sesiones de más)
+const sg = path.join(hooks, 'session-guard.cjs');
+const launch = path.join(repo, '.claude', 'skills', 'feature-flow', 'scripts', 'launch.cjs');
+if (fs.existsSync(sg)) {
+  const g = (command, env) => runNode(sg, JSON.stringify({ tool_name: 'Bash', tool_input: { command } }), env);
+  const L = 'node .claude/skills/feature-flow/scripts/launch.cjs';
+  const gc = [
+    ['bloquea claude --bg', 'claude --bg -w x "p"', {}, 2],
+    ['bloquea claude -p', 'claude -p "hola"', {}, 2],
+    ['bloquea claude --worktree', 'cd r && claude --worktree x', {}, 2],
+    ['permite claude agents', 'claude agents --json', {}, 0],
+    ['permite claude --version', 'claude --version', {}, 0],
+    ['permite el dry-run del lanzador', `${L} --slug a`, {}, 0],
+    ['una sesión hija no puede lanzar', `${L} --slug a --launch`, { FEATURE_FLOW_CHILD: '1' }, 2],
+    ['una sesión hija tampoco usa claude --bg directo', 'claude --bg x', { FEATURE_FLOW_CHILD: '1' }, 2],
+  ];
+  for (const [n, c, e, want] of gc) { const r = g(c, e); check(`session-guard: ${n}`, r.code === want, `exit=${r.code} (esperado ${want})`); }
+  const ask = g(`${L} --slug a --launch`, {});
+  check('session-guard: --launch pide confirmación humana', ask.code === 0 && ask.out.includes('"permissionDecision":"ask"'), `exit=${ask.code}`);
+} else add('FALLA', 'session-guard.cjs existe', sg);
+
+if (fs.existsSync(launch) && git.status === 0) {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'kit-ff-'));
+  const bin = path.join(base, 'bin'); fs.mkdirSync(bin);
+  const fake = path.join(bin, 'fake-claude.js');
+  fs.writeFileSync(fake, `const fs=require('fs');const a=process.argv.slice(2);
+if(a[0]==='agents'){console.log(process.env.FAKE_AGENTS||'[]');process.exit(0);}
+fs.appendFileSync(process.env.FAKE_LOG,JSON.stringify(a)+'\\n');console.log('id abc123');`);
+  const nodeBin = JSON.stringify(process.execPath).slice(1, -1);
+  fs.writeFileSync(path.join(bin, 'claude'), `#!/bin/sh\nexec "${process.execPath}" "${fake}" "$@"\n`, { mode: 0o755 });
+  fs.writeFileSync(path.join(bin, 'claude.cmd'), `@"${process.execPath}" "${fake}" %*\r\n`);
+  const log = path.join(base, 'launches.log');
+  const sh = (cwd, a) => spawnSync('git', a, { cwd, encoding: 'utf8', shell: process.platform === 'win32' });
+  const mk = (name, specLen = 300) => {
+    const d = path.join(base, name); fs.mkdirSync(d);
+    sh(d, ['init', '-q']); sh(d, ['config', 'user.email', 't@example.com']); sh(d, ['config', 'user.name', 't']);
+    fs.mkdirSync(path.join(d, 'docs', 'features', 'foo'), { recursive: true });
+    const f = (n, t) => fs.writeFileSync(path.join(d, 'docs', 'features', 'foo', n), t);
+    f('SPEC.md', 'x'.repeat(specLen)); f('STATE.md', '# STATE-FOO\n- decision A\n'); f('HANDOFF.md', '# HANDOFF-FOO\nproximo paso: B\n');
+    return d;
+  };
+  const commit = (d) => { sh(d, ['add', '.']); sh(d, ['commit', '-q', '-m', 'docs']); };
+  const L = (d, argv, env = {}) => {
+    const r = spawnSync(process.execPath, [launch, ...argv], { cwd: d, encoding: 'utf8', env: { ...process.env, PATH: bin + path.delimiter + process.env.PATH, FAKE_LOG: log, ...env } });
+    lastOut = `${r.stdout || ''}${r.stderr || ''}`; return { code: r.status, out: lastOut };
+  };
+  const bg = (n) => JSON.stringify(Array.from({ length: n }, (_, i) => ({ pid: i, kind: 'background', sessionId: String(i) })));
+
+  let d = mk('r1');
+  check('launch: rechaza si los documentos no están commiteados', L(d, ['--slug', 'foo']).code === 1);
+  commit(d);
+  let r = L(d, ['--slug', 'foo']);
+  check('launch: dry-run no lanza nada', r.code === 0 && r.out.includes('Dry-run') && !fs.existsSync(log), `exit=${r.code}`);
+  check('launch: slug inválido rechazado', L(d, ['--slug', '../x']).code === 1);
+  check('launch: sesión hija rechazada', L(d, ['--slug', 'foo', '--launch'], { FEATURE_FLOW_CHILD: '1' }).code === 1);
+  check('launch: sin poder contar sesiones, no lanza (falla cerrado)', L(d, ['--slug', 'foo', '--launch'], { FAKE_AGENTS: 'basura' }).code === 1 && !fs.existsSync(log));
+  check('launch: tope de simultáneas', L(d, ['--slug', 'foo', '--launch'], { FAKE_AGENTS: bg(2) }).code === 1 && !fs.existsSync(log));
+  check('launch: el techo fijo gana a la configuración', (() => {
+    fs.mkdirSync(path.join(d, '.claude'), { recursive: true });
+    fs.writeFileSync(path.join(d, '.claude', 'feature-flow.json'), '{"maxConcurrent":99}');
+    return L(d, ['--slug', 'foo', '--launch'], { FAKE_AGENTS: bg(3) }).code === 1;
+  })());
+  fs.rmSync(path.join(d, '.claude', 'feature-flow.json'));
+  r = L(d, ['--slug', 'foo', '--launch'], { FAKE_AGENTS: bg(1) });
+  const logged = fs.existsSync(log) ? fs.readFileSync(log, 'utf8') : '';
+  check('launch: lanza con --bg, -w y -n', r.code === 0 && logged.includes('"--bg"') && logged.includes('"-w"') && logged.includes('"foo"'), `exit=${r.code}`);
+  check('launch: segundo lanzamiento seguido rechazado (espera mínima)', L(d, ['--slug', 'foo', '--launch']).code === 1);
+  const reg = path.join(d, '.claude', '.feature-flow', 'launches.json');
+  fs.writeFileSync(reg, JSON.stringify([1, 2, 3].map((n) => ({ slug: 's' + n, at: Date.now() - (30 + n) * 60000 }))));
+  r = L(d, ['--slug', 'foo', '--launch']);
+  check('launch: tope diario', r.code === 1 && /hoy/.test(r.out), `exit=${r.code}`);
+  d = mk('r2', 50); commit(d);
+  check('launch: SPEC corto rechazado', L(d, ['--slug', 'foo']).code === 1);
+  fs.rmSync(base, { recursive: true, force: true });
+} else add('AVISO', 'launch.cjs no probado', 'falta el archivo o git');
+
+// --- rehydrate de feature
+if (fs.existsSync(rh) && git.status === 0) {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'kit-rf-'));
+  const sh = (a) => spawnSync('git', a, { cwd: tmp, encoding: 'utf8', shell: process.platform === 'win32' });
+  sh(['init', '-q']); sh(['config', 'user.email', 't@example.com']); sh(['config', 'user.name', 't']);
+  fs.mkdirSync(path.join(tmp, 'docs', 'features', 'foo'), { recursive: true });
+  fs.writeFileSync(path.join(tmp, 'docs', 'features', 'foo', 'STATE.md'), '# STATE-FOO\n');
+  fs.writeFileSync(path.join(tmp, 'docs', 'features', 'foo', 'HANDOFF.md'), '# HANDOFF-FOO\n');
+  fs.writeFileSync(path.join(tmp, 'docs', 'STATE.md'), '# STATE-GENERAL\n');
+  sh(['add', '.']); sh(['commit', '-q', '-m', 'x']);
+  const run = (source) => runNode(rh, JSON.stringify({ cwd: tmp, source }), { CLAUDE_PROJECT_DIR: tmp });
+  let r = run('startup');
+  check('rehydrate: startup en rama sin feature no inyecta nada', r.code === 0 && r.out.trim() === '', `exit=${r.code}`);
+  sh(['checkout', '-q', '-b', 'feature/foo']);
+  r = run('startup');
+  check('rehydrate: startup en la rama de la feature inyecta HANDOFF y STATE', r.out.includes('HANDOFF-FOO') && r.out.includes('STATE-FOO') && !r.out.includes('STATE-GENERAL'), `exit=${r.code}`);
+  r = run('compact');
+  check('rehydrate: compact inyecta el STATE general y la feature', r.out.includes('STATE-GENERAL') && r.out.includes('HANDOFF-FOO'), `exit=${r.code}`);
+  fs.rmSync(tmp, { recursive: true, force: true });
+}
+
 // --- Skills y subagentes
 const fm = (p) => fs.existsSync(p) && fs.readFileSync(p, 'utf8').replace(/^\uFEFF/, '').startsWith('---');
-for (const s of ['app-architecture-review', 'pr-prep', 'spec-interview']) {
+for (const s of ['app-architecture-review', 'pr-prep', 'spec-interview', 'feature-flow']) {
   check(`skill del repo: ${s}`, fm(path.join(repo, '.claude', 'skills', s, 'SKILL.md')));
 }
 for (const a of ['reviewer', 'explorer']) check(`subagente: ${a}`, fm(path.join(repo, '.claude', 'agents', `${a}.md`)));
