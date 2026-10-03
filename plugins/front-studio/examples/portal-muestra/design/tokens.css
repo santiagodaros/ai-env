@@ -1,0 +1,10 @@
+:root {
+  --ink: #12263A; --ink-2: #4A5B6C; --paper: #F5F6F8; --surface: #FFFFFF; --line: #D9DEE5;
+  --accent: #0E6F7A; --on-accent: #FFFFFF;
+  --ok: #1E7A4C; --warn: #9A5B00; --err: #B3261E; --info: #1F5FA8;
+  --nav-bg: #12263A; --nav-ink: #F5F6F8; --nav-ink-2: #9FB3C8;
+  --font: system-ui, "Segoe UI", Roboto, sans-serif;
+  --r-data: 2px; --r-panel: 6px;
+  --dur-fb: 100ms; --dur-panel: 250ms; --dur-exit: 180ms; --dur-chart: 400ms;
+  --ease-out: cubic-bezier(.16, 1, .3, 1);
+}

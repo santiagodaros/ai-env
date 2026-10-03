@@ -1,0 +1,10 @@
+{
+  "name": "ai-env",
+  "description": "Skills, subagentes y kits para trabajar con Claude Code en proyectos web y de cloud (Azure).",
+  "owner": { "name": "ai-env contributors" },
+  "plugins": [
+    { "name": "front-studio", "source": "./plugins/front-studio", "description": "Rediseño de front con preview en vivo, brand kit y re-auditoría de seguridad." },
+    { "name": "app-review", "source": "./plugins/app-review", "description": "Revisión de arquitectura y PR, entrevista de spec, subagentes reviewer y explorer." },
+    { "name": "cloud-ops", "source": "./plugins/cloud-ops", "description": "Skills para Azure: claim-check contra Microsoft Learn, KQL de inventario, entregables, registro de estado." }
+  ]
+}

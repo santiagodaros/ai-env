@@ -1,0 +1,8 @@
+{
+  "name": "app-review",
+  "description": "Revisión de arquitectura (seguridad, identidad, costo), preparación de PR, entrevista de spec y subagentes reviewer/explorer.",
+  "license": "MIT",
+  "author": {
+    "name": "ai-env contributors"
+  }
+}

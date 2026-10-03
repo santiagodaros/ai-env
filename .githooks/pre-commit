@@ -1,0 +1,2 @@
+#!/bin/sh
+node scripts/check.cjs || { echo "Commit bloqueado por scripts/check.cjs"; exit 1; }

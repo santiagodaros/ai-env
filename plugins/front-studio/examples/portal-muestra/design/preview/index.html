@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Meridiano — Operaciones (preview de muestra)</title>
+<style>
+/* TOKENS:START */
+:root {
+  --ink: #12263A; --ink-2: #4A5B6C; --paper: #F5F6F8; --surface: #FFFFFF; --line: #D9DEE5;
+  --accent: #0E6F7A; --on-accent: #FFFFFF;
+  --ok: #1E7A4C; --warn: #9A5B00; --err: #B3261E; --info: #1F5FA8;
+  --nav-bg: #12263A; --nav-ink: #F5F6F8; --nav-ink-2: #9FB3C8;
+  --font: system-ui, "Segoe UI", Roboto, sans-serif;
+  --r-data: 2px; --r-panel: 6px;
+  --dur-fb: 100ms; --dur-panel: 250ms; --dur-exit: 180ms; --dur-chart: 400ms;
+  --ease-out: cubic-bezier(.16, 1, .3, 1);
+}
+/* TOKENS:END */
+
+/* ESTILO:START */
+body { margin: 0; font: 14px/1.45 var(--font); color: var(--ink); background: var(--paper); font-variant-numeric: tabular-nums; }
+#app { display: grid; grid-template-columns: 216px minmax(0, 1fr); grid-template-rows: auto 1fr; min-height: 100vh; }
+[data-component="nav"] { grid-row: 1 / 3; background: var(--nav-bg); color: var(--nav-ink); padding: 20px 0; }
+.brand { font-weight: 600; font-size: 16px; padding: 0 20px 20px; letter-spacing: .01em; }
+.brand small { display: block; font-weight: 400; font-size: 12px; color: var(--nav-ink-2); }
+[data-component="nav"] a { display: block; padding: 8px 20px; color: var(--nav-ink-2); text-decoration: none; border-left: 3px solid transparent; }
+[data-component="nav"] a:hover { color: var(--nav-ink); }
+[data-component="nav"] a[aria-current] { color: var(--nav-ink); border-left-color: var(--accent); background: rgba(255,255,255,.06); font-weight: 600; }
+[data-component="nav"] a:focus-visible { outline-color: var(--nav-ink); }
+[data-component="topbar"] { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; padding: 10px 28px; background: var(--surface); border-bottom: 1px solid var(--line); }
+.field { display: flex; flex-direction: column; font-size: 12px; color: var(--ink-2); }
+.field select, .field input { font: inherit; font-size: 14px; color: var(--ink); background: var(--surface); border: 1px solid #8795A3; border-radius: var(--r-data); padding: 5px 8px; min-height: 32px; }
+.field input { width: 240px; }
+.fresh { margin-left: auto; color: var(--ink-2); font-size: 12px; }
+.fresh strong { color: var(--ink); font-weight: 600; }
+main { padding: 24px 28px 48px; max-width: 1280px; }
+main:focus { outline: none; }
+h1 { font-size: 28px; line-height: 1.15; margin: 0 0 4px; font-weight: 600; }
+.sub { color: var(--ink-2); margin: 0 0 24px; }
+h2 { font-size: 16px; font-weight: 600; margin: 0 0 10px; }
+.cols { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 28px; align-items: start; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-panel); }
+.sec { margin-bottom: 28px; }
+.act { display: grid; grid-template-columns: 112px 1fr auto; gap: 12px; align-items: center; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+.act:last-child { border-bottom: 0; }
+.act p { margin: 0; } .act small { color: var(--ink-2); display: block; }
+.sev { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: 13px; }
+.sev svg { width: 14px; height: 14px; flex: none; }
+.sev.err { color: var(--err); } .sev.warn { color: var(--warn); } .sev.info { color: var(--info); } .sev.ok { color: var(--ok); }
+button, .btn { font: inherit; border-radius: var(--r-data); min-height: 32px; padding: 4px 12px; cursor: pointer; border: 1px solid #8795A3; background: var(--surface); color: var(--ink); transition: background-color var(--dur-fb); }
+button:hover { background: #EDF0F4; }
+button.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+button.primary:hover { background: #0B5C65; }
+.tw { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+th, td { padding: 9px 14px; text-align: left; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { font-weight: 600; font-size: 12px; color: var(--ink-2); background: #FAFBFC; position: sticky; top: 0; }
+th button { all: unset; cursor: pointer; font-weight: 600; } th button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+td.n, th.n { text-align: right; }
+tbody tr[data-row] { cursor: pointer; } tbody tr[data-row]:hover { background: #F0F4F7; }
+tr:last-child td { border-bottom: 0; }
+.delta.up { color: var(--err); } .delta.down { color: var(--ok); } /* en costos, subir es la mala noticia */
+.bars { padding: 14px; display: grid; gap: 10px; }
+.bar { display: grid; grid-template-columns: 96px 1fr 120px; gap: 12px; align-items: center; }
+.bar i { display: block; height: 14px; background: var(--accent); border-radius: var(--r-data); transform-origin: left; width: var(--w); }
+.first .bar i { animation: grow var(--dur-chart) var(--ease-out) both; }
+@keyframes grow { from { transform: scaleX(0); } }
+.spark { width: 96px; height: 24px; vertical-align: middle; } .spark path { fill: none; stroke: var(--ink-2); stroke-width: 1.5; }
+.banner { display: flex; gap: 10px; align-items: center; padding: 10px 14px; margin-bottom: 16px; border: 1px solid var(--warn); border-left-width: 4px; border-radius: var(--r-panel); background: #FFF8EC; }
+.state { padding: 28px 18px; } .state h2 { margin-bottom: 4px; } .state p { margin: 0 0 12px; color: var(--ink-2); }
+.sk { display: block; height: 14px; border-radius: var(--r-data); background: #E3E7EC; animation: pulse 1.4s linear infinite; }
+@keyframes pulse { 50% { opacity: .45; } }
+.swap { animation: fade var(--dur-fb) linear 1; animation-duration: 200ms; } @keyframes fade { from { opacity: .35; } }
+.drawer { position: fixed; top: 0; right: 0; height: 100%; width: min(420px, 100%); background: var(--surface); border-left: 1px solid var(--line); padding: 20px; overflow: auto; transform: translateX(100%); visibility: hidden; transition: transform var(--dur-exit) ease-in, visibility 0s linear var(--dur-exit); }
+.drawer.open { transform: none; visibility: visible; transition: transform var(--dur-panel) var(--ease-out), visibility 0s; }
+.drawer h2 { font-size: 20px; } .drawer dl { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; margin: 16px 0; } .drawer dd { margin: 0; text-align: right; }
+.toast { position: fixed; left: 50%; bottom: 20px; transform: translate(-50%, 8px); opacity: 0; background: var(--ink); color: var(--paper); padding: 10px 16px; border-radius: var(--r-panel); transition: opacity 150ms linear, transform 150ms var(--ease-out); pointer-events: none; }
+.toast.show { opacity: 1; transform: translate(-50%, 0); transition-duration: 200ms; }
+@media (max-width: 900px) {
+  #app { grid-template-columns: minmax(0, 1fr); }
+  [data-component="nav"] { grid-row: auto; display: flex; overflow-x: auto; padding: 8px 12px; align-items: center; }
+  .brand { padding: 0 16px 0 0; white-space: nowrap; } .brand small { display: none; }
+  [data-component="nav"] a { border-left: 0; border-bottom: 3px solid transparent; white-space: nowrap; padding: 8px 12px; }
+  [data-component="nav"] a[aria-current] { border-bottom-color: var(--accent); }
+    .cols { grid-template-columns: minmax(0, 1fr); } .bar { grid-template-columns: 64px 1fr 84px; gap: 8px; } .act { grid-template-columns: 1fr; } .fresh { margin-left: 0; width: 100%; }
+  .field input { width: 100%; } main { padding: 18px 16px 40px; } [data-component="topbar"] { padding: 10px 16px; }
+}
+/* ESTILO:END */
+
+/* Piso de calidad */
+*, *::before, *::after { box-sizing: border-box; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; transition-delay: 0s !important; scroll-behavior: auto !important; }
+}
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+[hidden] { display: none !important; }
+</style>
+</head>
+<body class="first">
+<a class="sr-only" href="#main">Saltar al contenido</a>
+<div id="app">
+  <nav data-component="nav" aria-label="Principal">
+    <div class="brand">Meridiano<small>Operaciones</small></div>
+    <a href="#/inicio">Inicio</a><a href="#/costos">Costos</a><a href="#/clientes">Clientes</a>
+    <a href="#/ahorro">Ahorro</a><a href="#/gobernanza">Gobernanza</a><a href="#/resiliencia">Resiliencia</a><a href="#/proyectos">Proyectos</a>
+  </nav>
+  <header data-component="topbar" role="search">
+    <label class="field">Alcance<select id="scope"><option value="">Todos los clientes</option></select></label>
+    <label class="field">Buscar<input type="search" placeholder="Cliente, suscripción o recurso"></label>
+    <label class="field">Período<select id="range"><option>Mes actual</option><option>Últimos 30 días</option><option>Últimos 7 días</option></select></label>
+    <span class="fresh">Actualizado <strong>14:05</strong> (UTC−3) · hace 2 h</span>
+  </header>
+  <main id="main" tabindex="-1"></main>
+</div>
+<aside class="drawer" id="drawer" aria-label="Detalle del cliente" inert></aside>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<template id="screen-inicio">
+  <h1>Inicio</h1><p class="sub">Parte de las 14:05. Lo primero es lo que requiere acción.</p>
+  <div data-slot="banner"></div>
+  <div class="cols">
+    <section class="sec" data-component="acciones"><h2>Requiere acción</h2><div class="panel" data-slot="acciones"></div></section>
+    <section class="sec" data-component="cambios"><h2>Cambió desde ayer</h2><div class="panel tw" data-slot="cambios"></div></section>
+  </div>
+  <section class="sec" data-component="gasto-barras"><h2>Gasto del mes por cliente</h2><div class="panel bars" data-slot="barras"></div></section>
+</template>
+<template id="screen-costos">
+  <h1>Costos</h1><p class="sub">Gasto acumulado del mes contra el mes anterior y el pronóstico.</p>
+  <div data-slot="banner"></div>
+  <div class="panel tw" data-component="tabla-costos" data-slot="tabla"></div>
+</template>
+<template id="screen-clientes">
+  <h1>Clientes</h1><p class="sub">Acceso y estado de carga por cliente.</p>
+  <div class="panel tw" data-component="tabla-clientes" data-slot="clientes"></div>
+</template>
+<template id="screen-otro">
+  <h1 data-slot="titulo"></h1><div class="panel state"><h2>Fuera de la muestra</h2><p>Esta sección existe en la navegación del mapa del producto, pero la muestra solo desarrolla Inicio, Costos y Clientes.</p></div>
+</template>
+
+<script>
+/* Datos de ejemplo. Sin clientes ni identificadores reales. */
+const fmt = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+const pct = new Intl.NumberFormat('es-AR', { style: 'percent', minimumFractionDigits: 1, maximumFractionDigits: 1, signDisplay: 'always' });
+const trend = (a, b) => Array.from({ length: 30 }, (_, i) => Math.round(a + (b - a) * (i / 29) + Math.sin(i * 1.7 + a) * (a * .08)));
+const C = [
+  { id: 'a', n: 'Cliente A', now: 18420, prev: 15610, fc: 26100, bud: 24000, t: trend(520, 700), acc: 'ok' },
+  { id: 'b', n: 'Cliente B', now: 9870, prev: 10020, fc: 13900, bud: 15000, t: trend(330, 320), acc: 'ok' },
+  { id: 'c', n: 'Cliente C', now: 6310, prev: 5900, fc: 8800, bud: 9000, t: trend(200, 215), acc: 'vence' },
+  { id: 'd', n: 'Cliente D', now: 12480, prev: 11200, fc: 17600, bud: 18000, t: trend(390, 450), acc: 'ok' },
+  { id: 'e', n: 'Cliente E', now: 3120, prev: 3300, fc: 4300, bud: 5000, t: trend(110, 98), acc: 'ok' },
+];
+const ICON = { err: '<svg viewBox="0 0 14 14" aria-hidden="true"><rect x="1" y="1" width="12" height="12" fill="currentColor"/></svg>',
+  warn: '<svg viewBox="0 0 14 14" aria-hidden="true"><path d="M7 1 13 13H1Z" fill="currentColor"/></svg>',
+  info: '<svg viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="6" fill="currentColor"/></svg>' };
+const sev = (k, w) => `<span class="sev ${k}">${ICON[k]}${w}</span>`;
+const delta = (a, b) => { const d = (a - b) / b; return `<span class="delta ${d > 0 ? 'up' : 'down'}">${d > 0 ? '▲' : '▼'} ${pct.format(d)}</span>`; };
+const spark = (t) => { const mx = Math.max(...t), mn = Math.min(...t); return `<svg class="spark" viewBox="0 0 96 24" role="img" aria-label="Tendencia de 30 días"><path d="${t.map((v, i) => (i ? 'L' : 'M') + (i * 96 / 29).toFixed(1) + ' ' + (22 - (v - mn) / (mx - mn || 1) * 20).toFixed(1)).join('')}"/></svg>`; };
+const skel = (rows, cols) => `<table aria-busy="true"><tbody>${Array.from({ length: rows }, () => `<tr>${Array.from({ length: cols }, () => '<td><span class="sk"></span></td>').join('')}</tr>`).join('')}</tbody></table>`;
+const stateBox = (h, p, btn) => `<div class="state"><h2>${h}</h2><p>${p}</p>${btn || ''}</div>`;
+
+const main = document.getElementById('main'), drawer = document.getElementById('drawer'), toast = document.getElementById('toast');
+const scopeSel = document.getElementById('scope');
+C.forEach(c => scopeSel.add(new Option(c.n, c.id)));
+let scope = '', sortKey = 'now', sortDir = -1, lastFocus = null;
+const state = () => document.documentElement.dataset.state || 'ok';
+const rows = () => C.filter(c => !scope || c.id === scope);
+
+function slot(root, name, html) { root.querySelector(`[data-slot="${name}"]`).innerHTML = html; }
+function banner(root) { const b = root.querySelector('[data-slot="banner"]'); if (b && state() === 'stale') b.innerHTML = `<div class="banner" role="status">${sev('warn', 'Datos desactualizados')}<span>La última actualización fue hace 9 h. Los importes pueden no incluir el día de hoy.</span></div>`; }
+function body(root, ok, cols, rowsN) {
+  const s = state();
+  if (s === 'loading') return skel(rowsN, cols);
+  if (s === 'empty') return stateBox('Todavía no hay datos de costos', 'Cuando un cliente tenga suscripciones conectadas, el gasto aparece acá.', '<button class="primary">Conectar suscripción</button>');
+  if (s === 'error') return stateBox('No se pudieron cargar los costos', 'La consulta a Cost Management superó el tiempo de espera. Los demás datos siguen disponibles.', '<button class="primary" data-retry>Reintentar consulta</button>');
+  return ok();
+}
+
+function inicio(root) {
+  banner(root);
+  const acts = [
+    ['err', 'Error', 'Cliente C: la relación delegada vence en 6 días', 'Sin renovación se pierde el acceso a sus suscripciones.', 'Renovar relación'],
+    ['warn', 'Advertencia', 'Cliente A: gasto 18,0 % por encima del pronóstico', 'Dos servicios explican el 71 % del desvío.', 'Ver costos'],
+    ['warn', 'Advertencia', 'Cliente D: reserva con 41 % de utilización', 'Vence en 38 días.', 'Ver ahorro'],
+    ['info', 'Información', 'Cliente B: 12 recursos sin etiqueta de costo', 'Afecta la asignación del gasto.', 'Ver gobernanza'],
+  ];
+  slot(root, 'acciones', body(root, () => acts.map(a => `<div class="act">${sev(a[0], a[1])}<p>${a[2]}<small>${a[3]}</small></p><button data-ack>Marcar revisado</button></div>`).join(''), 1, 4));
+  slot(root, 'cambios', body(root, () => `<table><thead><tr><th>Cliente</th><th class="n">Gasto del mes</th><th class="n">Cambio vs. mes ant.</th></tr></thead><tbody>${rows().map(c => `<tr><td>${c.n}</td><td class="n">${fmt.format(c.now)}</td><td class="n">${delta(c.now, c.prev)}</td></tr>`).join('')}</tbody></table>`, 3, 5));
+  const mx = Math.max(...C.map(c => c.now));
+  slot(root, 'barras', body(root, () => rows().map(c => `<div class="bar"><span>${c.n}</span><i style="--w:${(c.now / mx * 100).toFixed(1)}%" role="img" aria-label="${c.n}: ${fmt.format(c.now)}"></i><span class="n" style="text-align:right">${fmt.format(c.now)}</span></div>`).join(''), 1, 5));
+}
+function costos(root) {
+  banner(root);
+  const data = rows().slice().sort((a, b) => (a[sortKey] - b[sortKey]) * sortDir);
+  const th = (k, l, n) => `<th class="${n ? 'n' : ''}" aria-sort="${sortKey === k ? (sortDir > 0 ? 'ascending' : 'descending') : 'none'}"><button data-sort="${k}">${l}${sortKey === k ? (sortDir > 0 ? ' ▲' : ' ▼') : ''}</button></th>`;
+  slot(root, 'tabla', body(root, () => `<table><caption class="sr-only">Costos por cliente</caption><thead><tr><th>Cliente</th>${th('now', 'Gasto del mes', 1)}${th('prev', 'Mes anterior', 1)}<th class="n">Cambio</th>${th('fc', 'Pronóstico', 1)}<th>Presupuesto</th><th>Últimos 30 días</th></tr></thead><tbody>${data.map(c => { const u = c.fc / c.bud; return `<tr data-row="${c.id}" tabindex="0"><td>${c.n}</td><td class="n">${fmt.format(c.now)}</td><td class="n">${fmt.format(c.prev)}</td><td class="n">${delta(c.now, c.prev)}</td><td class="n">${fmt.format(c.fc)}</td><td>${u > 1 ? sev('err', 'Excede ' + pct.format(u - 1)) : u > .9 ? sev('warn', 'Al ' + Math.round(u * 100) + ' %') : sev('ok', 'Al ' + Math.round(u * 100) + ' %')}</td><td>${spark(c.t)}</td></tr>`; }).join('')}</tbody></table>`, 7, 5));
+}
+function clientes(root) {
+  const s = state();
+  slot(root, 'clientes', s === 'loading' ? skel(5, 4) : `<table><thead><tr><th>Cliente</th><th>Acceso</th><th>Carga de costos</th><th class="n">Suscripciones</th></tr></thead><tbody>${rows().map((c, i) => {
+    const acc = s === 'noperm' && i % 2 ? sev('err', 'Sin acceso (relación vencida)') : c.acc === 'vence' ? sev('warn', 'Vence en 6 días') : sev('ok', 'Con acceso');
+    const load = s === 'noperm' && i % 2 ? '<span style="color:var(--ink-2)">No disponible sin acceso</span>' : s === 'partial' && i === 2 ? sev('err', 'Error al cargar') + ' <button data-retry>Reintentar</button>' : sev('ok', 'Cargado');
+    return `<tr><td>${c.n}</td><td>${acc}</td><td>${load}</td><td class="n">${3 + i}</td></tr>`; }).join('')}</tbody></table>`);
+}
+
+const screens = { inicio, costos, clientes };
+function route() {
+  const name = (location.hash.replace(/^#\//, '') || 'inicio').split('?')[0];
+  const known = screens[name];
+  const tpl = document.getElementById('screen-' + (known ? name : 'otro'));
+  const node = tpl.content.cloneNode(true);
+  if (known) known(node); else node.querySelector('[data-slot="titulo"]').textContent = name[0].toUpperCase() + name.slice(1);
+  main.replaceChildren(node);
+  document.querySelectorAll('[data-component="nav"] a').forEach(a => a.toggleAttribute('aria-current', a.getAttribute('href') === '#/' + name));
+  document.title = (known ? name[0].toUpperCase() + name.slice(1) : 'Sección') + ' — Meridiano';
+  main.focus({ preventScroll: true });
+  requestAnimationFrame(() => setTimeout(() => document.body.classList.remove('first'), 600)); // el dibujo de barras ocurre solo en la primera carga
+}
+function applyState() { const q = new URLSearchParams(location.hash.split('?')[1] || location.search); document.documentElement.dataset.state = q.get('state') || 'ok'; }
+
+function openDrawer(id) {
+  const c = C.find(x => x.id === id); lastFocus = document.activeElement;
+  drawer.innerHTML = `<button data-close aria-label="Cerrar detalle" style="float:right">Cerrar</button><h2>${c.n}</h2><p class="sub">Detalle del mes</p><dl><dt>Gasto del mes</dt><dd>${fmt.format(c.now)}</dd><dt>Mes anterior</dt><dd>${fmt.format(c.prev)}</dd><dt>Cambio</dt><dd>${delta(c.now, c.prev)}</dd><dt>Pronóstico</dt><dd>${fmt.format(c.fc)}</dd><dt>Presupuesto</dt><dd>${fmt.format(c.bud)}</dd></dl><button class="primary" data-ack>Marcar revisado</button>`;
+  drawer.inert = false; drawer.classList.add('open'); drawer.querySelector('[data-close]').focus();
+}
+function closeDrawer() { drawer.classList.remove('open'); drawer.inert = true; if (lastFocus) lastFocus.focus(); }
+function say(t) { toast.textContent = t; toast.classList.add('show'); clearTimeout(say.t); say.t = setTimeout(() => toast.classList.remove('show'), 2200); }
+
+document.addEventListener('click', e => {
+  const t = e.target;
+  if (t.closest('[data-ack]')) { say('Marcado como revisado'); return; }
+  if (t.closest('[data-close]')) return closeDrawer();
+  if (t.closest('[data-retry]')) { say('Consulta reintentada'); return route(); }
+  const s = t.closest('[data-sort]'); if (s) { const k = s.dataset.sort; sortDir = sortKey === k ? -sortDir : -1; sortKey = k; return route(); }
+  const r = t.closest('[data-row]'); if (r) openDrawer(r.dataset.row);
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && drawer.classList.contains('open')) closeDrawer(); if (e.key === 'Enter' && e.target.matches('[data-row]')) { e.preventDefault(); openDrawer(e.target.dataset.row); } }); /* preventDefault: si no, el Enter activa el botón al que acaba de pasar el foco */
+scopeSel.addEventListener('change', () => { scope = scopeSel.value; route(); main.classList.remove('swap'); void main.offsetWidth; main.classList.add('swap'); });
+addEventListener('hashchange', () => { applyState(); route(); });
+applyState(); route();
+</script>
+</body>
+</html>

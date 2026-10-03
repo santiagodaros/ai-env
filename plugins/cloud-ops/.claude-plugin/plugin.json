@@ -1,0 +1,8 @@
+{
+  "name": "cloud-ops",
+  "description": "Skills para trabajo en Azure: verificación de afirmaciones contra Microsoft Learn, inventario con Resource Graph (KQL), entregables a cliente, revisión y registro de estado.",
+  "license": "MIT",
+  "author": {
+    "name": "ai-env contributors"
+  }
+}
