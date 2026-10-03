@@ -12,6 +12,7 @@ process.stdin.on('end', () => {
   const viaLauncher = /feature-flow[\\/]scripts[\\/]launch\.cjs/.test(cmd);
   const child = !!process.env.FEATURE_FLOW_CHILD;
   const block = m => { process.stderr.write(m + '\n'); process.exit(2); };
+  if (/arch-first[\\/]scripts[\\/]approve\.cjs/.test(cmd)) block('Bloqueado: la aprobación de la arquitectura la da la persona. Pedile que corra approve.cjs en su terminal.');
   if (viaLauncher) {
     if (child && /--launch\b/.test(cmd)) block('Bloqueado: una sesión lanzada por feature-flow no puede lanzar otras.');
     if (/--launch\b/.test(cmd)) {

@@ -46,6 +46,26 @@ for (const n of names) {
 }
 
 const tg = testGate(files, state);
+// Arquitectura hexagonal (si el repo tiene architecture.json)
+let arq = null;
+try {
+  const ac = path.join(__dirname, '..', '..', 'arch-first', 'scripts', 'arch-check.cjs');
+  if (fs.existsSync(ac)) { const r = run(process.execPath, [ac, '--json'], { cwd: root, shell: false }); const j = JSON.parse(r.stdout || '{}'); if (j.configs) arq = j.violations; }
+} catch { /* sin chequeo */ }
+// Seguridad sobre el diff
+let sec = null;
+try {
+  const sc = path.join(__dirname, '..', '..', 'security-diff', 'scripts', 'secscan.cjs');
+  if (fs.existsSync(sc)) { const r = run(process.execPath, [sc, '--range', `${mb}..HEAD`, '--state', `docs/features/${slug}/STATE.md`, '--json'], { cwd: root, shell: false }); sec = JSON.parse(r.stdout || '{}'); }
+} catch { /* sin escáner */ }
+// ADR incompletos
+let adrBad = [];
+try {
+  const ad = path.join(__dirname, '..', '..', 'adr', 'scripts', 'adr.cjs');
+  if (fs.existsSync(ad) && fs.existsSync(path.join(root, 'docs', 'decisions'))) { const r = run(process.execPath, [ad, 'check', '--root', root], { cwd: root, shell: false }); if (r.status !== 0) adrBad = (r.stderr || '').split('\n').filter(l => l.startsWith('- ')); }
+} catch { /* sin chequeo */ }
+const adrPend = ((read('STATE.md').match(/^-\s*\[ADR\].*$/gim)) || []);
+const blocked = (arq && arq.length) || (sec && sec.high && sec.high.length) || adrBad.length;
 let consumo = '(sin medición)';
 try {
   const bp = path.join(__dirname, '..', '..', 'budget-plan', 'scripts', 'budget.cjs');
@@ -74,6 +94,12 @@ const out = [
   '## Decisiones registradas (del STATE)', section(state, /decisiones/) || '(ninguna registrada)',
   '',
   '## Pruebas (compuerta)', `- ${tg.ok ? 'OK' : 'FALLA'}: ${tg.note}`, ...(tg.waiver ? [`- Sin pruebas (exención declarada): ${tg.waiver}`] : []), '',
+  '## Arquitectura', arq === null ? '- (sin architecture.json)' : arq.length ? '- FALLA:\n' + arq.map(v => `  - ${v.file}${v.line ? ':' + v.line : ''}: ${v.msg}`).join('\n') : '- OK: la regla de dependencia se cumple',
+  '',
+  '## Seguridad (diff)', ...(sec === null ? ['- (sin escáner)'] : [`- Alta sin aceptar: ${sec.high.length}${sec.high.length ? ' FALLA' : ''}`, ...sec.high.map(f => `  - ${f.id} ${f.file}:${f.line}: ${f.msg}`), `- Media a revisar: ${sec.medium.length}`, ...sec.medium.map(f => `  - ${f.id} ${f.file}:${f.line}: ${f.msg}`), `- Baja: ${sec.low.length}`, ...(sec.accepted.length ? [`- Riesgos aceptados: ${sec.accepted.map(a => a.id + ' (' + a.why + ')').join('; ')}`] : []), ...(sec.deps.length ? [`- Dependencias tocadas: ${sec.deps.length}`, ...sec.deps.map(f => `  - ${f.file}:${f.line}: ${f.msg}`)] : [])]),
+  '',
+  '## Decisiones para registrar como ADR', ...(adrPend.length ? adrPend : ['(ninguna marcada con [ADR])']), ...(adrBad.length ? ['ADR incompletos:', ...adrBad] : []),
+  '',
   '## Consumo medido', consumo, '',
   '## Verificaciones', ...(results.length ? results : ['- (sin scripts typecheck/lint/test en package.json)']),
   '',
@@ -81,4 +107,4 @@ const out = [
 const dir = path.join(root, '.claude', '.feature-flow'); fs.mkdirSync(dir, { recursive: true });
 const dest = path.join(dir, `${slug}-facts.md`); fs.writeFileSync(dest, out);
 process.stdout.write(out + `\nGuardado en ${path.relative(root, dest).replace(/\\/g, '/')}\n`);
-process.exit(results.some(r => r.includes('FALLA')) || !tg.ok ? 3 : 0);
+process.exit(results.some(r => r.includes('FALLA')) || !tg.ok || blocked ? 3 : 0);

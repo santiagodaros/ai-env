@@ -338,9 +338,118 @@ if (fs.existsSync(slPath) && fs.existsSync(bpPath) && git.status === 0) {
   fs.rmSync(bdir, { recursive: true, force: true }); fs.rmSync(proj, { recursive: true, force: true });
 } else add('AVISO', 'presupuesto no probado', 'falta statusline, budget.cjs o git');
 
+// --- arch-first, adr, security-diff, project-init
+const A = path.join(repo, '.claude', 'skills');
+const needAll = ['arch-first', 'adr', 'security-diff', 'project-init'].every((s) => fs.existsSync(path.join(A, s)));
+if (needAll && git.status === 0) {
+  const mkproj = () => { const p = fs.mkdtempSync(path.join(os.tmpdir(), 'kit-ar-')); for (const s of ['arch-first', 'adr']) fs.cpSync(path.join(A, s), path.join(p, '.claude', 'skills', s), { recursive: true }); return p; };
+  const N = (p, script, argv = [], env = {}) => { const r = spawnSync(process.execPath, [script, ...argv], { cwd: p, encoding: 'utf8', env: { ...process.env, ...env } }); lastOut = `${r.stdout || ''}${r.stderr || ''}`; return { code: r.status, out: lastOut }; };
+  const sk = (p, s, f) => path.join(p, '.claude', 'skills', s, 'scripts', f);
+  const guard = (p, tool_input) => { const r = runNode(path.join(hooks, 'arch-guard.cjs'), JSON.stringify({ tool_name: 'Write', tool_input, cwd: p }), { CLAUDE_PROJECT_DIR: p }); return r.code; };
+  const proj = mkproj();
+  let r = N(proj, sk(proj, 'arch-first', 'scaffold.cjs'), ['--type', 'api', '--lang', 'ts', '--name', 'demo']);
+  const hasCode = (function walk(d) { return fs.readdirSync(d, { withFileTypes: true }).some((e) => e.name === 'node_modules' || e.name === '.claude' ? false : e.isDirectory() ? walk(path.join(d, e.name)) : /\.(ts|js|py|ps1)$/.test(e.name)); })(proj);
+  check('arch-first: scaffold crea esqueleto, ADR 0001 y no escribe código', r.code === 0 && fs.existsSync(path.join(proj, 'architecture.json')) && fs.existsSync(path.join(proj, 'docs', 'decisions', 'README.md')) && fs.readdirSync(path.join(proj, 'docs', 'decisions')).some((f) => f.startsWith('0001-')) && !hasCode, `exit=${r.code}`);
+  check('arch-first: scaffold no pisa un architecture.json existente', N(proj, sk(proj, 'arch-first', 'scaffold.cjs'), ['--type', 'api', '--lang', 'ts', '--name', 'demo']).code === 1);
+  check('arch-guard: sin aprobación bloquea código', guard(proj, { file_path: 'src/domain/a.ts', content: 'export const a = 1;' }) === 2);
+  check('arch-guard: Claude no puede sellar la aprobación', guard(proj, { file_path: 'docs/architecture/ARCHITECTURE.md', new_string: 'Estado: aprobada (2026-01-01)' }) === 2);
+  check('arch-guard: permite documentos y pruebas sin aprobación', guard(proj, { file_path: 'docs/architecture/ARCHITECTURE.md', content: '# x' }) === 0 && guard(proj, { file_path: 'tests/a.test.ts', content: 'x' }) === 0);
+  check('approve: rechaza si quedan secciones "(completar)"', N(proj, sk(proj, 'arch-first', 'approve.cjs')).code === 1);
+  // completar el diseño como lo haría el modelo
+  const cj = path.join(proj, 'architecture.json'); const cfgj = JSON.parse(fs.readFileSync(cj, 'utf8'));
+  cfgj.ports = { driving: [{ name: 'CrearInforme', adapter: 'Ruta HTTP POST /informes' }], driven: [{ name: 'RepositorioInformes', adapter: 'Azure Resource Graph' }] };
+  fs.writeFileSync(cj, JSON.stringify(cfgj, null, 2));
+  const mdp = path.join(proj, 'docs', 'architecture', 'ARCHITECTURE.md');
+  fs.writeFileSync(mdp, fs.readFileSync(mdp, 'utf8').replace(/\(completar[^\n]*\)/g, 'Completo.'));
+  r = N(proj, sk(proj, 'arch-first', 'preview.cjs'));
+  const html = fs.existsSync(path.join(proj, 'docs', 'architecture', 'preview.html')) ? fs.readFileSync(path.join(proj, 'docs', 'architecture', 'preview.html'), 'utf8') : '';
+  check('arch-first: preview genera diagrama y avisa que falta aprobar', r.code === 0 && html.includes('<svg') && html.includes('CrearInforme') && html.includes('Sin aprobar'), `exit=${r.code}`);
+  N(proj, sk(proj, 'arch-first', 'preview.cjs'), ['--artifact']);
+  check('arch-first: preview --artifact es un fragmento con <title>', /^<title>/.test(fs.readFileSync(path.join(proj, 'docs', 'architecture', 'preview.artifact.html'), 'utf8')));
+  check('approve: con el diseño completo aprueba y sella', N(proj, sk(proj, 'arch-first', 'approve.cjs')).code === 0 && /^Aprobada-hash: [0-9a-f]{64}$/m.test(fs.readFileSync(mdp, 'utf8')));
+  const G = (f, c) => guard(proj, { file_path: f, content: c });
+  check('arch-guard: aprobada permite dominio puro', G('src/domain/a.ts', "export const a = 1;\n") === 0);
+  check('arch-guard: aplicación puede importar dominio', G('src/application/uc.ts', "import { a } from '../domain/a';\nexport const u = a;\n") === 0);
+  check('arch-guard: dominio no importa adaptadores', G('src/domain/b.ts', "import { x } from '../adapters/outbound/repo';\n") === 2);
+  check('arch-guard: dominio no importa infraestructura (axios)', G('src/domain/b.ts', "import axios from 'axios';\n") === 2);
+  check('arch-guard: dominio no lee variables de entorno', G('src/domain/b.ts', 'const k = process.env.KEY;\n') === 2);
+  check('arch-guard: entrada no importa salida', G('src/adapters/inbound/route.ts', "import { r } from '../outbound/repo';\n") === 2);
+  check('arch-guard: salida sí puede leer el entorno y usar axios', G('src/adapters/outbound/repo.ts', "import axios from 'axios';\nconst k = process.env.KEY;\n") === 0);
+  check('arch-guard: código fuera de las capas bloqueado', G('src/suelto.ts', 'export const s = 1;\n') === 2);
+  check('arch-guard: scripts/ queda permitido', G('scripts/tool.ts', 'export const s = 1;\n') === 0);
+  const sg2 = runNode(path.join(hooks, 'session-guard.cjs'), JSON.stringify({ tool_name: 'Bash', tool_input: { command: 'node .claude/skills/arch-first/scripts/approve.cjs' } }));
+  check('session-guard: Claude no puede correr approve.cjs', sg2.code === 2, `exit=${sg2.code}`);
+  // arch-check sobre archivos reales
+  fs.mkdirSync(path.join(proj, 'src', 'domain'), { recursive: true }); fs.mkdirSync(path.join(proj, 'src', 'adapters', 'outbound'), { recursive: true });
+  fs.writeFileSync(path.join(proj, 'src', 'domain', 'a.ts'), 'export const a = 1;\n');
+  check('arch-check: arquitectura limpia pasa', N(proj, sk(proj, 'arch-first', 'arch-check.cjs')).code === 0);
+  fs.writeFileSync(path.join(proj, 'src', 'domain', 'mala.ts'), "import { x } from '../adapters/outbound/repo';\n");
+  r = N(proj, sk(proj, 'arch-first', 'arch-check.cjs'));
+  check('arch-check: detecta la violación con archivo y línea', r.code === 1 && /src[\\/]domain[\\/]mala\.ts:1/.test(r.out), `exit=${r.code}`);
+  fs.unlinkSync(path.join(proj, 'src', 'domain', 'mala.ts'));
+  cfgj.forbiddenInCore.push('lodash'); fs.writeFileSync(cj, JSON.stringify(cfgj, null, 2));
+  check('arch-guard: cambiar architecture.json invalida la aprobación', G('src/domain/c.ts', 'export const c = 1;\n') === 2);
+  // python y PowerShell
+  const L = require(path.join(A, 'arch-first', 'scripts', 'archlib.cjs'));
+  const pyCfg = { dir: '/x', layers: { domain: { paths: ['src/app/domain'], mayImport: ['domain'] }, application: { paths: ['src/app/application'], mayImport: ['domain', 'application'] }, outbound: { paths: ['src/app/adapters/outbound'], mayImport: ['application', 'domain', 'outbound'] } }, coreLayers: ['domain', 'application'], forbiddenInCore: ['requests'], envOnlyIn: ['outbound'], aliases: {}, allowOutside: ['tests/'] };
+  for (const l of Object.values(pyCfg.layers)) l.mayImport = l.mayImport.slice();
+  check('arch-check: Python, dominio importando un adaptador', L.checkText(pyCfg, 'src/app/domain/r.py', 'from app.adapters.outbound.repo import Repo\n').length === 1);
+  check('arch-check: Python, dominio con requests', L.checkText(pyCfg, 'src/app/domain/r.py', 'import requests\n').length === 1);
+  check('arch-check: Python, import relativo válido', L.checkText(pyCfg, 'src/app/application/u.py', 'from ..domain.r import R\n').length === 0);
+  const psCfg = { ...pyCfg, layers: { domain: { paths: ['src/domain'], mayImport: ['domain'] }, outbound: { paths: ['src/adapters/outbound'], mayImport: ['outbound'] } }, forbiddenInCore: ['Az.'] };
+  check('arch-check: PowerShell, dominio con dot-source de un adaptador', L.checkText(psCfg, 'src/domain/r.ps1', '. $PSScriptRoot\\..\\adapters\\outbound\\az.ps1\n').length === 1);
+  check('arch-check: PowerShell, dominio con Import-Module Az.Accounts', L.checkText(psCfg, 'src/domain/r.ps1', 'Import-Module Az.Accounts\n').length === 1);
+  fs.rmSync(proj, { recursive: true, force: true });
+
+  // adr
+  const ap = mkproj(); const AD = sk(ap, 'adr', 'adr.cjs');
+  r = N(ap, AD, ['new', 'Usar cola de mensajes', '--root', ap, '--context', 'c', '--decision', 'd', '--alternatives', 'a', '--consequences', 'q']);
+  check('adr: crea la decisión numerada y el índice', r.code === 0 && fs.existsSync(path.join(ap, 'docs', 'decisions', '0001-usar-cola-de-mensajes.md')) && fs.readFileSync(path.join(ap, 'docs', 'decisions', 'README.md'), 'utf8').includes('Usar cola de mensajes'));
+  check('adr: check pasa con ADR completos', N(ap, AD, ['check', '--root', ap]).code === 0);
+  N(ap, AD, ['new', 'Otra', '--root', ap]);
+  check('adr: check falla con "(completar)"', N(ap, AD, ['check', '--root', ap]).code === 1);
+  fs.rmSync(ap, { recursive: true, force: true });
+
+  // security-diff
+  const sp = fs.mkdtempSync(path.join(os.tmpdir(), 'kit-sd-'));
+  const sg = (a) => spawnSync('git', a, { cwd: sp, encoding: 'utf8', shell: false });
+  sg(['init', '-q']); sg(['config', 'user.email', 't@example.com']); sg(['config', 'user.name', 't']);
+  fs.writeFileSync(path.join(sp, 'package.json'), '{"name":"t","dependencies":{}}\n'); sg(['add', '.']); sg(['commit', '-q', '-m', 'base']); sg(['branch', '-M', 'main']);
+  const SC = path.join(A, 'security-diff', 'scripts', 'secscan.cjs');
+  const scan = (extra = []) => { const x = spawnSync(process.execPath, [SC, '--range', 'main..HEAD', '--json', ...extra], { cwd: sp, encoding: 'utf8' }); lastOut = x.stdout + x.stderr; let j = {}; try { j = JSON.parse(x.stdout); } catch { /* sin json */ } return { code: x.status, j }; };
+  sg(['checkout', '-q', '-b', 'f']);
+  fs.writeFileSync(path.join(sp, 'a.ts'), ['const password = "Sup3rSecreta99";', 'const ok = process.env.PASSWORD;', 'const t = "abcd1234efgh"; // secscan-allow', 'el.innerHTML = x;', 'const r = await fetch("http://api.ejemplo-externo.net/x");', 'agent.rejectUnauthorized = true;', 'const o = { rejectUnauthorized: false };'].join('\n') + '\n');
+  fs.writeFileSync(path.join(sp, 'package.json'), '{"name":"t","dependencies":{\n"left-pad": "^1.3.0"\n}}\n'); fs.writeFileSync(path.join(sp, 'pnpm-lock.yaml'), 'x\n');
+  sg(['add', '.']); sg(['commit', '-q', '-m', 'f']);
+  let s = scan();
+  check('security-diff: secreto literal y TLS desactivado son alta y bloquean', s.code === 3 && s.j.high.some((f) => f.id === 'S001' && f.line === 1) && s.j.high.some((f) => f.id === 'S002' && f.line === 7), `exit=${s.code}`);
+  check('security-diff: secscan-allow excluye la línea y process.env no es literal', !s.j.high.some((f) => f.line === 2 || f.line === 3));
+  check('security-diff: XSS y URL sin cifrar quedan como media y baja', s.j.medium.some((f) => f.id === 'S005') && s.j.low.some((f) => f.id === 'S009'));
+  check('security-diff: lista dependencias nuevas', s.j.deps.some((d) => /left-pad/.test(d.msg)));
+  fs.writeFileSync(path.join(sp, 'STATE.md'), 'Riesgo aceptado: S001 es un valor de ejemplo en un archivo de demostración\nRiesgo aceptado: S002 solo en entorno local de pruebas\n');
+  s = scan(['--state', 'STATE.md']);
+  check('security-diff: un riesgo aceptado con motivo deja de bloquear y queda registrado', s.code === 0 && s.j.accepted.length === 2, `exit=${s.code}`);
+  fs.rmSync(sp, { recursive: true, force: true });
+
+  // project-init
+  const ip = fs.mkdtempSync(path.join(os.tmpdir(), 'kit-pi-'));
+  fs.writeFileSync(path.join(ip, 'package.json'), JSON.stringify({ name: 'x', dependencies: { react: '18', express: '4' }, scripts: { test: 'x', build: 'y' } }));
+  fs.writeFileSync(path.join(ip, 'CLAUDE.md'), '# Mi proyecto\nTexto propio.\n');
+  const det = JSON.parse(N(ip, path.join(A, 'project-init', 'scripts', 'detect.cjs')).out);
+  check('project-init: detecta stack, tipo sugerido y scripts faltantes', det.suggestedType.startsWith('web+api') && det.scripts.includes('test') && det.missingChecks.includes('typecheck'), det.suggestedType);
+  const IN = path.join(A, 'project-init', 'scripts', 'init.cjs');
+  check('project-init: sin --apply no escribe nada', N(ip, IN).code === 0 && !fs.existsSync(path.join(ip, 'docs', 'STATE.md')));
+  N(ip, IN, ['--apply']);
+  const cm = fs.readFileSync(path.join(ip, 'CLAUDE.md'), 'utf8');
+  check('project-init: aplica sin pisar el texto propio y con scripts reales', cm.includes('Texto propio.') && cm.includes('npm run test') && !cm.includes('npm run lint:') && fs.existsSync(path.join(ip, 'docs', 'STATE.md')) && fs.readFileSync(path.join(ip, '.gitignore'), 'utf8').includes('.claude/.feature-flow/'));
+  N(ip, IN, ['--apply']);
+  check('project-init: es idempotente', (fs.readFileSync(path.join(ip, 'CLAUDE.md'), 'utf8').match(/commands:start/g) || []).length === 1);
+  fs.rmSync(ip, { recursive: true, force: true });
+} else add('AVISO', 'arch-first y compañía no probadas', 'faltan skills o git');
+
 // --- Skills y subagentes
 const fm = (p) => fs.existsSync(p) && fs.readFileSync(p, 'utf8').replace(/^\uFEFF/, '').startsWith('---');
-for (const s of ['app-architecture-review', 'pr-prep', 'spec-interview', 'feature-flow', 'feature-close', 'feature-run', 'budget-plan']) {
+for (const s of ['app-architecture-review', 'pr-prep', 'spec-interview', 'feature-flow', 'feature-close', 'feature-run', 'budget-plan', 'arch-first', 'adr', 'security-diff', 'project-init']) {
   check(`skill del repo: ${s}`, fm(path.join(repo, '.claude', 'skills', s, 'SKILL.md')));
 }
 for (const a of ['reviewer', 'explorer']) check(`subagente: ${a}`, fm(path.join(repo, '.claude', 'agents', `${a}.md`)));

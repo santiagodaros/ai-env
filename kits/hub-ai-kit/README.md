@@ -29,6 +29,13 @@ Skill manual `/feature-close [slug]`, en una corrida: `collect.cjs --run` junta 
 
 `/budget-plan` lee el consumo del límite de 5 h que guarda la statusline del kit en `~/.claude/.budget/latest.json` (solo Pro/Max), estima lo que necesita una feature con las que ya mediste y propone ejecutar ahora, justo o en rebanadas. Sin historial no inventa: lo dice. Configuración opcional: `.claude/budget.json` (`reservePct`, `safetyFactor`). Necesitás tener instalada la statusline (`personal/settings.snippet.json`).
 
+## Arquitectura primero (`arch-first`), seguridad del diff, ADR y arranque de repos
+
+- `/arch-first <qué se construye>`: esqueleto hexagonal sin código (`scaffold.cjs`), diseño en `architecture.json` y `docs/architecture/ARCHITECTURE.md`, vista previa (`preview.cjs`, o `--artifact` para publicarla en la app de Claude) y aprobación humana con `approve.cjs` en tu terminal: sella el diseño con un hash y si cambia hay que aprobar de nuevo. Con el diseño aprobado, el hook `arch-guard` deja escribir código solo dentro de las capas y con la regla de dependencia (`arch-check.cjs` la verifica también en `feature-close` y en `.github/workflows/architecture.yml`).
+- `/security-diff`: `secscan.cjs` sobre las líneas agregadas de la rama; las altas frenan el cierre.
+- `/adr`: decisiones en `docs/decisions/`.
+- `/project-init`: detecta el stack, completa `CLAUDE.md`, `docs/STATE.md` y `.gitignore`, y sigue con `arch-first`.
+
 ## Instalación (Windows, macOS o Linux)
 
 Requisitos: Node 18+, git y Claude Code instalados. Todo el kit usa Node, así que los comandos son los mismos en cualquier sistema.
