@@ -814,4 +814,5 @@ const fails = rows.filter((r) => r.res === 'FALLA').length;
 if (process.env.GITHUB_ACTIONS) for (const r of rows.filter((x) => x.res === 'FALLA')) console.log(`::error title=smoke-test::${r.name} | ${String(r.detail).replace(/[\r\n%]+/g, ' ').slice(0, 400)}`);
 const warns = rows.filter((r) => r.res === 'AVISO').length;
 console.log(`\nResultado: ${rows.filter((r) => r.res === 'PASA').length} pasan, ${fails} fallan, ${warns} avisos. Plataforma: ${process.platform}, Node ${process.versions.node}.`);
+if (process.env.GITHUB_ACTIONS) console.log(`::notice title=smoke-test ${process.platform}::${rows.filter((r) => r.res === 'PASA').length} pasan, ${fails} fallan, ${warns} avisos. PowerShell: ${rows.filter((r) => /PowerShell/.test(r.name) && /iac-verify/.test(r.name)).map((r) => r.res + ' ' + r.name.replace('iac-verify: ', '')).join('; ') || 'sin pruebas'}. Avisos: ${rows.filter((r) => r.res === 'AVISO').map((r) => r.name).join('; ') || 'ninguno'}`);
 process.exit(fails ? 1 : 0);
