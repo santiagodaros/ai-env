@@ -48,8 +48,14 @@ jobs:
         if: runner.os == 'Windows'
         shell: powershell
         run: |
-          Get-Content -Raw install.ps1 | Invoke-Expression
-          Get-Content -Raw install.ps1 | Invoke-Expression
+          foreach ($n in 1, 2) {
+            try { Get-Content -Raw install.ps1 | Invoke-Expression }
+            catch {
+              $m = ("corrida $n :: " + ($_ | Out-String) + " :: " + $_.ScriptStackTrace) -replace "[\r\n]+", " | "
+              Write-Host "::error title=install.ps1::$m"
+              exit 1
+            }
+          }
       - name: El resultado quedó en los settings del usuario
         shell: bash
         run: |
