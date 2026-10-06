@@ -20,11 +20,14 @@ const check = (name, ok, detail = '') =>
   add(ok ? 'PASA' : 'FALLA', name, ok ? detail : `${detail} | salida: ${lastOut.trim().replace(/\s+/g, ' ').slice(0, 300)}`);
 
 let lastOut = '';
+const emptyProj2 = () => fs.mkdtempSync(path.join(os.tmpdir(), 'aienv-vacio-'));
+// Home de mentira para todo lo que los hooks escriben fuera del repo (registro de uso, statusline).
+const TEST_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'aienv-home-'));
 function runNode(script, json, env = {}) {
   const r = spawnSync(process.execPath, [script], {
     input: json,
     encoding: 'utf8',
-    env: { ...process.env, ...env },
+    env: { ...process.env, AI_ENV_HOME: TEST_HOME, ...env },
   });
   const out = `${r.stdout || ''}${r.stderr || ''}${r.error ? ' [spawn: ' + r.error.message + ']' : ''}`;
   lastOut = out;
@@ -56,7 +59,7 @@ const bashCandidates = process.platform === 'win32'
 const bash = bashCandidates.find((b) => b === 'bash' || fs.existsSync(b));
 if (!bash) add('AVISO', 'no se encontró bash: no se probaron los comandos de hooks end-to-end');
 const emptyProj = fs.mkdtempSync(path.join(os.tmpdir(), 'aienv-empty-'));
-for (const plug of [GD, DF]) {
+for (const plug of [GD, DF, path.join(P, 'cloud-ops')]) {
   const name = path.basename(plug);
   let hj = null;
   try { hj = JSON.parse(fs.readFileSync(path.join(plug, 'hooks', 'hooks.json'), 'utf8')); check(`${name}: hooks.json es JSON válido con la clave "hooks"`, !!hj.hooks); }
@@ -270,7 +273,10 @@ fs.appendFileSync(process.env.FAKE_LOG,JSON.stringify(a)+'\\n');console.log('id 
   const reg = path.join(d, '.claude', '.feature-flow', 'launches.json');
   fs.writeFileSync(reg, JSON.stringify([1, 2, 3].map((n) => ({ slug: 's' + n, at: Date.now() - (30 + n) * 60000 }))));
   r = L(d, ['--slug', 'foo', '--launch']);
-  check('launch: tope diario', r.code === 1 && /hoy/.test(r.out), `exit=${r.code}`);
+  check('launch: tope de lanzamientos en 24 h', r.code === 1 && /24 h/.test(r.out), `exit=${r.code}`);
+  fs.writeFileSync(reg, JSON.stringify([1, 2, 3].map((n) => ({ slug: 's' + n, at: Date.now() - (25 * 60 + n) * 60000 }))));
+  r = L(d, ['--slug', 'foo']);
+  check('launch: los lanzamientos de hace más de 24 h no cuentan para el tope', r.code === 0 && /0\/3 lanzadas en 24 h/.test(r.out), `exit=${r.code}`);
   d = mk('r2', 50); commit(d);
   check('launch: SPEC corto rechazado', L(d, ['--slug', 'foo']).code === 1);
   fs.rmSync(base, { recursive: true, force: true });
@@ -589,6 +595,204 @@ for (const a of ['reviewer', 'explorer']) check(`app-review: subagente ${a}`, fm
   check('skills: cada script citado con ${CLAUDE_PLUGIN_ROOT} existe', missing.length === 0);
 }
 fs.rmSync(emptyProj, { recursive: true, force: true });
+
+// --- Base compartida de los hooks: copia única, registro de uso y timeouts
+{
+  const root = path.join(__dirname, '..');
+  const r = spawnSync(process.execPath, [path.join(root, 'scripts', 'sync-shared.cjs'), '--check'], { encoding: 'utf8' });
+  lastOut = `${r.stdout}${r.stderr}`;
+  check('hooks: hooks/lib.cjs de cada plugin es copia exacta de shared/hooks-lib.cjs', r.status === 0);
+  const noTimeout = [];
+  for (const d of fs.readdirSync(P)) {
+    const f = path.join(P, d, 'hooks', 'hooks.json'); if (!fs.existsSync(f)) continue;
+    for (const [ev, groups] of Object.entries(JSON.parse(fs.readFileSync(f, 'utf8')).hooks)) for (const g of groups) for (const h of g.hooks) if (!(h.timeout > 0)) noTimeout.push(`${d}:${ev}`);
+  }
+  lastOut = noTimeout.join(' ');
+  check('hooks: todos declaran timeout (un hook colgado no frena la sesión)', noTimeout.length === 0);
+
+  const lh = fs.mkdtempSync(path.join(os.tmpdir(), 'aienv-log-'));
+  const logf = path.join(lh, '.claude', 'ai-env', 'usage.jsonl');
+  const bgd = path.join(ghooks, 'bash-guard.cjs');
+  const secretCmd = 'git reset --hard # palabra-unica-zxq';
+  runNode(bgd, JSON.stringify({ tool_name: 'Bash', tool_input: { command: secretCmd } }), { AI_ENV_HOME: lh });
+  runNode(bgd, JSON.stringify({ tool_name: 'Bash', tool_input: { command: 'cat .env' } }), { AI_ENV_HOME: lh });
+  const logged = fs.existsSync(logf) ? fs.readFileSync(logf, 'utf8') : '';
+  lastOut = logged;
+  const recs = logged.trim().split('\n').filter(Boolean).map((l) => { try { return JSON.parse(l); } catch { return {}; } });
+  check('registro de uso: anota hook, decisión y regla', recs.length === 2 && recs[0].hook === 'bash-guard' && recs[0].d === 'ask' && recs[0].rule === 'git-reset-hard' && recs[1].d === 'block' && recs[1].rule === 'env-read');
+  check('registro de uso: no guarda el comando ni rutas', !logged.includes('zxq') && !logged.includes('.env') && recs.every((x) => Object.keys(x).sort().join() === 'd,hook,rule,t'));
+  runNode(bgd, JSON.stringify({ tool_name: 'Bash', tool_input: { command: 'cat .env' } }), { AI_ENV_HOME: lh, AI_ENV_LOG: 'off' });
+  check('registro de uso: AI_ENV_LOG=off no escribe', fs.readFileSync(logf, 'utf8') === logged);
+  const st = spawnSync(process.execPath, [path.join(A, 'doctor', 'scripts', 'doctor.cjs'), '--stats', '--json'], { encoding: 'utf8', env: { ...process.env, AI_ENV_HOME: lh } });
+  lastOut = st.stdout + st.stderr;
+  let sj = {}; try { sj = JSON.parse(st.stdout); } catch { /* */ }
+  check('doctor --stats: resume las decisiones por hook y regla', sj.total === 2 && (sj.rules || []).some((x) => x.rule === 'env-read' && x.count === 1));
+
+  // Latencia: cada llamada a herramienta paga el arranque de Node de sus hooks.
+  const times = [];
+  for (let i = 0; i < 5; i++) { const t0 = process.hrtime.bigint(); runNode(bgd, JSON.stringify({ tool_name: 'Bash', tool_input: { command: 'git status' } })); times.push(Number(process.hrtime.bigint() - t0) / 1e6); }
+  const med = times.sort((a, b) => a - b)[2];
+  add(med < 400 ? 'PASA' : 'AVISO', 'hooks: latencia de un guard (mediana de 5)', `${Math.round(med)} ms`);
+}
+
+// --- bash-guard: infraestructura como código
+{
+  const bgd = path.join(ghooks, 'bash-guard.cjs');
+  const g = (command) => runNode(bgd, JSON.stringify({ tool_name: 'Bash', tool_input: { command } }));
+  const isAsk = (r) => r.code === 0 && r.out.includes('"permissionDecision":"ask"');
+  const cases = [
+    ['terraform apply sin plan pide confirmación', 'terraform apply', true],
+    ['terraform -chdir apply -auto-approve pide confirmación', 'terraform -chdir=infra apply -auto-approve', true],
+    ['terraform apply de un plan guardado pasa', 'terraform apply tfplan', false],
+    ['terraform plan pasa', 'terraform plan -out tfplan', false],
+    ['az deployment create sin what-if pide confirmación', 'az deployment group create -g rg -f main.bicep', true],
+    ['az deployment create con --confirm-with-what-if pasa', 'az deployment group create -g rg -f main.bicep --confirm-with-what-if', false],
+    ['az deployment what-if pasa', 'az deployment sub what-if -l brazilsouth -f main.bicep', false],
+    ['New-AzResourceGroupDeployment sin -WhatIf pide confirmación', 'New-AzResourceGroupDeployment -ResourceGroupName rg -TemplateFile main.bicep', true],
+    ['New-AzResourceGroupDeployment -WhatIf pasa', 'New-AzResourceGroupDeployment -ResourceGroupName rg -TemplateFile main.bicep -WhatIf', false],
+  ];
+  for (const [n, c, want] of cases) { const r = g(c); check(`bash-guard: ${n}`, isAsk(r) === want && r.code === 0, `exit=${r.code}`); }
+}
+
+// --- cloud-ops: iac-verify (Stop) con herramientas simuladas, y PowerShell real si está
+{
+  const CO = path.join(P, 'cloud-ops');
+  const iv = path.join(CO, 'hooks', 'iac-verify.cjs');
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'aienv-iac-'));
+  const bin = path.join(base, 'bin'); fs.mkdirSync(bin);
+  const fake = path.join(bin, 'fake-tool.js');
+  fs.writeFileSync(fake, `const a=process.argv.slice(2);const tool=a.shift();const e=process.env;
+if(tool==='terraform'){ if(a.includes('version')) process.exit(0); if(a.includes('fmt')){ if(e.FAKE_TF_FMT==='1'){console.log('main.tf');process.exit(3);} process.exit(0);} if(a.includes('validate')){ if(e.FAKE_TF_VALIDATE==='1'){console.error('Error: Unsupported argument');process.exit(1);} process.exit(0);} }
+if(tool==='bicep'){ if(a.includes('--version')) process.exit(0); if(e.FAKE_BICEP==='1'){console.error('main.bicep(3,5) : Error BCP057: The name "x" does not exist');process.exit(1);} process.exit(0); }
+process.exit(0);`);
+  for (const t of ['terraform', 'bicep']) {
+    fs.writeFileSync(path.join(bin, t), `#!/bin/sh\nexec "${process.execPath}" "${fake}" ${t} "$@"\n`, { mode: 0o755 });
+    fs.writeFileSync(path.join(bin, `${t}.cmd`), `@"${process.execPath}" "${fake}" ${t} %*\r\n`);
+  }
+  const sh = (cwd, a) => spawnSync('git', a, { cwd, encoding: 'utf8', shell: false });
+  const mk = (name, files) => {
+    const d = path.join(base, name); fs.mkdirSync(d);
+    sh(d, ['init', '-q']); sh(d, ['config', 'user.email', 't@example.com']); sh(d, ['config', 'user.name', 't']);
+    fs.writeFileSync(path.join(d, 'README.md'), 'x'); sh(d, ['add', '.']); sh(d, ['commit', '-q', '-m', 'init']);
+    for (const [f, c] of Object.entries(files)) { fs.mkdirSync(path.dirname(path.join(d, f)), { recursive: true }); fs.writeFileSync(path.join(d, f), c); }
+    return d;
+  };
+  const V = (d, env = {}, input = {}) => runNode(iv, JSON.stringify({ cwd: d, ...input }), { CLAUDE_PROJECT_DIR: d, PATH: bin + path.delimiter + process.env.PATH, ...env });
+  if (fs.existsSync(iv)) {
+    const tfRepo = mk('tf repo', { 'infra/main.tf': 'resource "x" "y" {}\n' });
+    check('iac-verify: Terraform formateado y sin init pasa', V(tfRepo).code === 0);
+    let r = V(tfRepo, { FAKE_TF_FMT: '1' });
+    check('iac-verify: terraform fmt -check con diferencias bloquea', r.code === 2 && /terraform fmt/.test(r.out), `exit=${r.code}`);
+    check('iac-verify: no bloquea dos veces en el mismo turno', V(tfRepo, { FAKE_TF_FMT: '1' }, { stop_hook_active: true }).code === 0);
+    check('iac-verify: AI_ENV_HOOKS_SKIP=iac-verify lo apaga', V(tfRepo, { FAKE_TF_FMT: '1', AI_ENV_HOOKS_SKIP: 'iac-verify' }).code === 0);
+    check('iac-verify: sin terraform init no corre validate', V(tfRepo, { FAKE_TF_VALIDATE: '1' }).code === 0);
+    fs.mkdirSync(path.join(tfRepo, 'infra', '.terraform'));
+    r = V(tfRepo, { FAKE_TF_VALIDATE: '1' });
+    check('iac-verify: con init hecho, terraform validate con errores bloquea', r.code === 2 && /terraform validate/.test(r.out), `exit=${r.code}`);
+    fs.mkdirSync(path.join(tfRepo, '.claude')); fs.writeFileSync(path.join(tfRepo, '.claude', 'cloud-ops.json'), '{"iacVerify": false}');
+    check('iac-verify: se apaga por repo con .claude/cloud-ops.json', V(tfRepo, { FAKE_TF_FMT: '1' }).code === 0);
+    const bcRepo = mk('bicep', { 'main.bicep': 'param x string\n' });
+    check('iac-verify: Bicep que compila pasa', V(bcRepo).code === 0);
+    r = V(bcRepo, { FAKE_BICEP: '1' });
+    check('iac-verify: error de compilación de Bicep bloquea', r.code === 2 && /BCP057/.test(r.out), `exit=${r.code}`);
+    check('iac-verify: sin cambios de infraestructura no hace nada', V(mk('otro', { 'notas.md': 'hola' }), { FAKE_TF_FMT: '1', FAKE_BICEP: '1' }).code === 0);
+    const psShell = ['pwsh', 'powershell'].find((c) => { const x = spawnSync(c, ['-NoProfile', '-NonInteractive', '-Command', 'exit 0'], { encoding: 'utf8' }); return !x.error && x.status === 0; });
+    if (psShell) {
+      const good = mk('ps ok', { 'scripts/ok.ps1': 'param([string]$Name)\nWrite-Output "hola $Name"\n' });
+      r = V(good); check(`iac-verify: PowerShell válido pasa (${psShell} real)`, r.code === 0, `exit=${r.code}`);
+      const badPs = mk('ps mal', { 'scripts/mal.ps1': 'function Roto {\n  Write-Output "sin cerrar"\n' });
+      r = V(badPs); check(`iac-verify: error de sintaxis de PowerShell bloquea (${psShell} real)`, r.code === 2 && /sintaxis/.test(r.out) && /mal\.ps1/.test(r.out), `exit=${r.code}`);
+    } else add('AVISO', 'iac-verify: no hay PowerShell en esta máquina', 'la verificación de .ps1 se prueba en el CI');
+  } else add('FALLA', 'iac-verify.cjs existe', iv);
+
+  // Resumen de plan / what-if
+  const ps = path.join(CO, 'skills', 'iac-change-review', 'scripts', 'plan-summary.cjs');
+  const fx = path.join(__dirname, 'fixtures');
+  const S = (f, extra = []) => { const x = spawnSync(process.execPath, [ps, f, ...extra], { encoding: 'utf8' }); lastOut = `${x.stdout}${x.stderr}`; return { code: x.status, out: lastOut }; };
+  let r = S(path.join(fx, 'tfplan-riesgoso.json'));
+  check('plan-summary: plan riesgoso sale con 3 y veredicto PARAR', r.code === 3 && /Veredicto: PARAR/.test(r.out));
+  check('plan-summary: marca reemplazo con datos, Owner, origen abierto, lock y acceso público', ['reemplazar un recurso con datos', 'rol Owner', 'abre el origen a cualquiera', 'lock o policy', 'habilita acceso público'].every((t) => r.out.includes(t)));
+  check('plan-summary: nunca imprime valores que no están en la lista permitida', !r.out.includes('no-debe-imprimirse'));
+  check('plan-summary: marca el cambio de SKU como costo', /sku_name: B1 → P1v3/.test(r.out));
+  r = S(path.join(fx, 'tfplan-limpio.json'));
+  check('plan-summary: plan sin alertas sale con 0', r.code === 0 && /SIN ALERTAS/.test(r.out) && /Crear 2/.test(r.out));
+  r = S(path.join(fx, 'whatif-riesgoso.json'));
+  check('plan-summary: what-if con borrado de base y acceso público sale con 3', r.code === 3 && /Microsoft\.Sql\/servers\/databases sql-demo\/db1: destruir/.test(r.out) && /publicNetworkAccess: Disabled → Enabled/.test(r.out) && /no pudo evaluar/.test(r.out));
+  const u16 = path.join(base, 'u16.json'); fs.writeFileSync(u16, Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(fs.readFileSync(path.join(fx, 'tfplan-limpio.json'), 'utf8'), 'utf16le')]));
+  check('plan-summary: lee UTF-16 (redirección de PowerShell 5.1)', S(u16).code === 0);
+  r = S(path.join(fx, 'tfplan-riesgoso.json'), ['--json']);
+  let pj = {}; try { pj = JSON.parse(r.out); } catch { /* */ }
+  check('plan-summary: --json devuelve veredicto y conteos', pj.verdict === 'PARAR' && pj.counts && pj.counts.reemplazar === 1 && pj.alta.length >= 5);
+  check('plan-summary: un archivo que no es un plan se rechaza con 1', S(path.join(__dirname, '..', 'README.md')).code === 1);
+}
+
+// --- dev-flow: camino corto (quick-fix) y etapa al arrancar
+{
+  const qk = path.join(A, 'quick-fix', 'scripts', 'quick.cjs');
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'aienv-quick-'));
+  const sh = (cwd, a) => spawnSync('git', a, { cwd, encoding: 'utf8', shell: false });
+  const mk = (name) => {
+    const d = path.join(base, name); fs.mkdirSync(path.join(d, 'src'), { recursive: true });
+    sh(d, ['init', '-q', '-b', 'main']); sh(d, ['config', 'user.email', 't@example.com']); sh(d, ['config', 'user.name', 't']);
+    fs.writeFileSync(path.join(d, 'src', 'util.js'), 'exports.f = () => 1;\n'); sh(d, ['add', '.']); sh(d, ['commit', '-q', '-m', 'init']);
+    return d;
+  };
+  const Q = (d, argv = []) => { const x = spawnSync(process.execPath, [qk, ...argv], { cwd: d, encoding: 'utf8' }); lastOut = `${x.stdout}${x.stderr}`; return { code: x.status, out: lastOut }; };
+  const w = (d, f, c) => { fs.mkdirSync(path.dirname(path.join(d, f)), { recursive: true }); fs.writeFileSync(path.join(d, f), c); };
+  if (fs.existsSync(qk)) {
+    const d = mk('chico');
+    check('quick-fix: sin nada en el índice se rechaza', Q(d).code === 1);
+    w(d, 'src/util.js', 'exports.f = () => 2;\n');
+    check('quick-fix: con cambios fuera del índice se rechaza', Q(d).code === 1);
+    sh(d, ['add', '-A']);
+    let r = Q(d);
+    check('quick-fix: código sin prueba no pasa', r.code === 3 && /FALLA pruebas/.test(r.out), `exit=${r.code}`);
+    r = Q(d, ['--no-test', 'corto']);
+    check('quick-fix: un motivo de menos de 10 caracteres no exime de la prueba', r.code === 3);
+    w(d, 'tests/util.test.js', 'require("assert").strictEqual(require("../src/util.js").f(), 2);\n'); sh(d, ['add', '-A']);
+    r = Q(d);
+    check('quick-fix: con prueba pasa y pide --log', r.code === 0 && /--log/.test(r.out) && !fs.existsSync(path.join(d, 'docs', 'CHANGELOG.md')), `exit=${r.code}`);
+    r = Q(d, ['--log', 'corrige el valor que devuelve f']);
+    const cl = () => fs.readFileSync(path.join(d, 'docs', 'CHANGELOG.md'), 'utf8');
+    check('quick-fix: --log anota una línea en docs/CHANGELOG.md y la deja en el índice', r.code === 0 && /arreglo: corrige el valor que devuelve f/.test(cl()) && /^A  docs\/CHANGELOG\.md/m.test(sh(d, ['status', '--porcelain']).stdout));
+    Q(d, ['--log', 'corrige el valor que devuelve f en util']);
+    check('quick-fix: volver a correr reemplaza la línea en vez de duplicarla', (cl().match(/arreglo:/g) || []).length === 1 && /en util/.test(cl()) && cl().endsWith('\n'));
+    const big = mk('grande');
+    for (let i = 0; i < 4; i++) w(big, `src/m${i}.js`, Array.from({ length: 25 }, (_, k) => `exports.v${k} = ${k};`).join('\n') + '\n');
+    w(big, 'tests/m.test.js', '1;\n'); sh(big, ['add', '-A']);
+    r = Q(big);
+    check('quick-fix: muchos archivos y líneas manda al flujo completo (sale con 3)', r.code === 3 && /NO es un cambio chico/.test(r.out) && /feature-flow/.test(r.out));
+    const sens = [['dependencias', 'package.json', '{"name":"x"}\n'], ['identidad', 'src/auth/token.js', 'exports.t = 1;\n'], ['infraestructura', 'infra/main.tf', 'resource "x" "y" {}\n'], ['esquema', 'db/migrations/001.sql', 'select 1;\n'], ['arquitectura', 'architecture.json', '{}\n']];
+    for (const [n, f, c] of sens) { const x = mk('s-' + n); w(x, f, c); w(x, 'tests/a.test.js', '1;\n'); sh(x, ['add', '-A']); r = Q(x); check(`quick-fix: un cambio de ${n} no es chico`, r.code === 3 && /NO es un cambio chico/.test(r.out), `exit=${r.code}`); }
+    const cfgRepo = mk('techo'); w(cfgRepo, '.claude/dev-flow.json', '{"quickFix":{"maxFiles":50,"maxLines":5000}}'); sh(cfgRepo, ['add', '-A']); sh(cfgRepo, ['commit', '-q', '-m', 'cfg']);
+    for (let i = 0; i < 6; i++) w(cfgRepo, `src/n${i}.js`, 'exports.a = 1;\n');
+    w(cfgRepo, 'tests/n.test.js', '1;\n'); sh(cfgRepo, ['add', '-A']);
+    r = Q(cfgRepo, ['--json']); let qj = {}; try { qj = JSON.parse(r.out); } catch { /* */ }
+    check('quick-fix: la configuración no puede superar el techo (5 archivos, 120 líneas)', r.code === 3 && qj.limits && qj.limits.maxFiles === 5 && qj.limits.maxLines === 120);
+    const sec = mk('secreto'); w(sec, 'src/util.js', 'exports.k = "AK" + "IA";\nconst password = "' + ['hunter2', 'hunter2'].join('') + '";\n'); w(sec, 'tests/u.test.js', '1;\n'); sh(sec, ['add', '-A']);
+    r = Q(sec);
+    check('quick-fix: una credencial literal en el arreglo no pasa la compuerta de seguridad', r.code === 3 && /FALLA seguridad/.test(r.out), `exit=${r.code}`);
+  } else add('FALLA', 'quick.cjs existe', qk);
+
+  // La compuerta de pruebas no exige pruebas unitarias a infraestructura declarativa
+  const { testGate } = require(path.join(A, 'feature-close', 'scripts', 'gates.cjs'));
+  check('compuerta de pruebas: cambios solo de .tf o .bicep no exigen pruebas', testGate([['M', 'infra/main.tf'], ['A', 'infra/app.bicep']], '').ok === true);
+  check('compuerta de pruebas: un .ps1 sin prueba sigue fallando', testGate([['M', 'scripts/deploy.ps1']], '').ok === false);
+
+  // rehydrate: etapa y siguiente paso
+  const rh = path.join(hooks, 'rehydrate.cjs');
+  const fr = path.join(base, 'mi-feature'); fs.mkdirSync(path.join(fr, 'docs', 'features', 'mi-feature'), { recursive: true });
+  sh(fr, ['init', '-q', '-b', 'main']); sh(fr, ['config', 'user.email', 't@example.com']); sh(fr, ['config', 'user.name', 't']);
+  w(fr, 'docs/features/mi-feature/SPEC.md', 'x'.repeat(300)); w(fr, 'docs/features/mi-feature/STATE.md', '# STATE\n'); w(fr, 'docs/features/mi-feature/HANDOFF.md', '# HANDOFF\n');
+  let r = runNode(rh, JSON.stringify({ source: 'startup', cwd: fr }), { CLAUDE_PROJECT_DIR: fr, CLAUDE_BUDGET_DIR: path.join(base, 'bd') });
+  check('rehydrate: al arrancar inyecta la etapa y el siguiente paso de la feature', r.code === 0 && /Etapa actual: commit-docs/.test(r.out) && /\/dev-flow:feature-run mi-feature/.test(r.out), `exit=${r.code}`);
+  const ar = path.join(base, 'con-arq'); fs.mkdirSync(ar); sh(ar, ['init', '-q', '-b', 'main']);
+  spawnSync(process.execPath, [path.join(A, 'arch-first', 'scripts', 'scaffold.cjs'), '--type', 'cli', '--lang', 'ts', '--name', 'demo'], { cwd: ar, encoding: 'utf8' });
+  r = runNode(rh, JSON.stringify({ source: 'startup', cwd: ar }), { CLAUDE_PROJECT_DIR: ar });
+  check('rehydrate: avisa al arrancar si la arquitectura está sin aprobar', r.code === 0 && /arquitectura sin aprobar/.test(r.out), `exit=${r.code}`);
+  r = runNode(rh, JSON.stringify({ source: 'startup', cwd: emptyProj2() }), {});
+  check('rehydrate: en un repo sin nada que decir no inyecta nada', r.code === 0 && r.out.trim() === '');
+}
 
 // --- Instaladores de un comando
 {

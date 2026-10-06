@@ -1,0 +1,9 @@
+{"format_version":"1.2","terraform_version":"1.9.0","resource_changes":[
+ {"address":"azurerm_storage_account.logs","type":"azurerm_storage_account","name":"logs","change":{"actions":["delete","create"],"before":{"account_tier":"Standard","account_replication_type":"GRS","public_network_access_enabled":false,"primary_access_key":"valor-que-no-debe-imprimirse"},"after":{"account_tier":"Standard","account_replication_type":"LRS","public_network_access_enabled":true,"primary_access_key":"otro-valor-que-no-debe-imprimirse"}}},
+ {"address":"azurerm_role_assignment.ops","type":"azurerm_role_assignment","name":"ops","change":{"actions":["create"],"before":null,"after":{"role_definition_name":"Owner","principal_type":"ServicePrincipal"}}},
+ {"address":"azurerm_network_security_rule.rdp","type":"azurerm_network_security_rule","name":"rdp","change":{"actions":["create"],"before":null,"after":{"access":"Allow","direction":"Inbound","source_address_prefix":"*","destination_port_range":"3389"}}},
+ {"address":"azurerm_management_lock.rg","type":"azurerm_management_lock","name":"rg","change":{"actions":["delete"],"before":{"lock_level":"CanNotDelete"},"after":null}},
+ {"address":"azurerm_service_plan.app","type":"azurerm_service_plan","name":"app","change":{"actions":["update"],"before":{"sku_name":"B1"},"after":{"sku_name":"P1v3"}}},
+ {"address":"azurerm_resource_group.rg","type":"azurerm_resource_group","name":"rg","change":{"actions":["no-op"],"before":{"location":"brazilsouth"},"after":{"location":"brazilsouth"}}},
+ {"address":"data.azurerm_client_config.me","type":"azurerm_client_config","name":"me","change":{"actions":["read"],"before":null,"after":{}}}
+]}

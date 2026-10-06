@@ -1,0 +1,4 @@
+{"format_version":"1.2","resource_changes":[
+ {"address":"azurerm_resource_group.rg","type":"azurerm_resource_group","name":"rg","change":{"actions":["create"],"before":null,"after":{"location":"brazilsouth"}}},
+ {"address":"azurerm_service_plan.app","type":"azurerm_service_plan","name":"app","change":{"actions":["create"],"before":null,"after":{"sku_name":"B1"}}}
+]}

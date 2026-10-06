@@ -1,6 +1,7 @@
 // Compuertas de calidad compartidas por feature-close y feature-run.
 const fs = require('fs'), path = require('path');
-const CODE = /\.(ts|tsx|js|jsx|mjs|cjs|py|cs|java|go|rs|ps1|psm1|sh|bicep|tf)$/i;
+// La infraestructura declarativa (.tf, .bicep) no entra: no se le exigen pruebas unitarias; la validan el plan y iac-verify.
+const CODE = /\.(ts|tsx|js|jsx|mjs|cjs|py|cs|java|go|rs|ps1|psm1|sh)$/i;
 const NOT_CODE = /(^|\/)(docs|\.github|\.claude|node_modules|dist|build)\/|\.d\.ts$|(^|\/)[\w.-]*\.config\.[a-z]+$|(^|\/)(eslint|prettier|jest|vitest|vite|tsconfig)[\w.-]*$/i;
 const TEST = /(^|\/)(__tests__|tests?|spec|specs)\/|\.(test|spec)\.[a-z]+$|(^|\/)test_[^/]+\.py$|_test\.(go|py)$|\.tests?\.ps1$/i;
 
@@ -17,4 +18,4 @@ function testGate(files, stateText) {
   if (waiver) return { ok: true, code, tests, waiver, note: `exención declarada: ${waiver}` };
   return { ok: false, code, tests, waiver, note: `cambia ${code.length} archivo(s) de código y ningún archivo de prueba. Agregá pruebas o declará en el STATE una línea "Sin pruebas: <motivo de al menos 10 caracteres>"` };
 }
-module.exports = { testGate };
+module.exports = { testGate, CODE, NOT_CODE, TEST };

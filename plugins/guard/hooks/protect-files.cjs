@@ -10,9 +10,9 @@ run('protect-files', (input) => {
   const base = filePath.split('/').pop() || '';
 
   // 1) Rutas protegidas
-  if (/(^|\/)\.git\//.test(filePath)) block(`${filePath} está dentro de .git/`);
-  if (/^(package-lock\.json|pnpm-lock\.yaml|yarn\.lock)$/.test(base)) block(`${base} es un lockfile; regeneralo con el gestor de paquetes, no a mano`);
-  if (/^\.env(\..+)?$/.test(base) && !/^\.env\.(example|sample|template)$/.test(base)) block(`${base} puede contener secretos; usá managed identity o variables de entorno del servicio`);
+  if (/(^|\/)\.git\//.test(filePath)) block(`${filePath} está dentro de .git/`, 'git-dir');
+  if (/^(package-lock\.json|pnpm-lock\.yaml|yarn\.lock)$/.test(base)) block(`${base} es un lockfile; regeneralo con el gestor de paquetes, no a mano`, 'lockfile');
+  if (/^\.env(\..+)?$/.test(base) && !/^\.env\.(example|sample|template)$/.test(base)) block(`${base} puede contener secretos; usá managed identity o variables de entorno del servicio`, 'env-file');
 
   // 2) Contenido con apariencia de secreto (Write: content; Edit: new_string; MultiEdit: edits[])
   const text = [ti.content, ti.new_string, ...(Array.isArray(ti.edits) ? ti.edits.map((e) => e && e.new_string) : [])].filter(Boolean).join('\n');
@@ -25,9 +25,9 @@ run('protect-files', (input) => {
     [/eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}/, 'token JWT literal'],
   ];
   for (const [re, label] of patterns) {
-    if (re.test(text)) block(`el contenido para ${filePath || 'el archivo'} parece incluir ${label}. No pongas credenciales en el código: usá managed identity, federación OIDC o variables de entorno del servicio.`);
+    if (re.test(text)) block(`el contenido para ${filePath || 'el archivo'} parece incluir ${label}. No pongas credenciales en el código: usá managed identity, federación OIDC o variables de entorno del servicio.`, 'secret-content');
   }
 
   // 3) La configuración que activa estos hooks: que la cambie la persona, no Claude por su cuenta.
-  if (/(^|\/)\.claude\/settings(\.local)?\.json$/.test(filePath)) ask(`${filePath} define permisos, hooks y plugins activos. Confirmá solo si pediste este cambio.`);
+  if (/(^|\/)\.claude\/settings(\.local)?\.json$/.test(filePath)) ask(`${filePath} define permisos, hooks y plugins activos. Confirmá solo si pediste este cambio.`, 'claude-settings');
 });

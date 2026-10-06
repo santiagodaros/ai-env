@@ -8,6 +8,30 @@ const add = (res, name, detail = '') => rows.push({ res, name, detail });
 const json = (f) => { try { return JSON.parse(fs.readFileSync(f, 'utf8').replace(/^﻿/, '')); } catch { return null; } };
 const ver = (cmd, args) => { const r = spawnSync(cmd, args, { encoding: 'utf8', shell: process.platform === 'win32' }); return r.status === 0 ? (r.stdout || '').trim().split('\n')[0] : null; };
 
+// --- Estadística de uso de los hooks: node doctor.cjs --stats [--days N]
+if (process.argv.includes('--stats')) {
+  const i = process.argv.indexOf('--days'); const days = Math.max(1, Number(i >= 0 ? process.argv[i + 1] : 30) || 30);
+  const f = path.join(home, '.claude', 'ai-env', 'usage.jsonl');
+  const since = Date.now() - days * 86400000, agg = {};
+  let n = 0;
+  if (fs.existsSync(f)) for (const l of fs.readFileSync(f, 'utf8').split('\n')) {
+    let e; try { e = JSON.parse(l); } catch { continue; }
+    if (!e || Date.parse(e.t) < since) continue;
+    const k = `${e.hook}\t${e.rule}\t${e.d}`; agg[k] = (agg[k] || 0) + 1; n++;
+  }
+  const list = Object.entries(agg).map(([k, c]) => { const [hook, rule, d] = k.split('\t'); return { hook, rule, decision: d === 'block' ? 'bloqueó' : 'pidió confirmación', count: c }; }).sort((a, b) => b.count - a.count);
+  if (process.argv.includes('--json')) console.log(JSON.stringify({ days, total: n, rules: list }, null, 2));
+  else if (!n) console.log(`Sin decisiones registradas en los últimos ${days} días.${fs.existsSync(f) ? '' : ' Todavía no existe el registro (' + f + ').'}${/^(off|0|false|no)$/i.test(process.env.AI_ENV_LOG || '') ? ' El registro está apagado (AI_ENV_LOG=off).' : ''}`);
+  else {
+    const w1 = Math.max(4, ...list.map((r) => r.hook.length)), w2 = Math.max(5, ...list.map((r) => r.rule.length));
+    console.log(`Decisiones de los hooks en los últimos ${days} días: ${n}\n`);
+    console.log(`${'hook'.padEnd(w1)}  ${'regla'.padEnd(w2)}  ${'decisión'.padEnd(18)}  veces`);
+    for (const r of list) console.log(`${r.hook.padEnd(w1)}  ${r.rule.padEnd(w2)}  ${r.decision.padEnd(18)}  ${r.count}`);
+    console.log('\nUna regla que interrumpe muchas veces es candidata a revisarse; una que nunca aparece no molesta. El registro no guarda comandos ni rutas.');
+  }
+  process.exit(0);
+}
+
 // Herramientas
 const major = Number(process.versions.node.split('.')[0]);
 add(major >= 18 ? 'OK' : 'FALLA', 'Node 18 o superior', `v${process.versions.node}`);
@@ -39,8 +63,18 @@ const snap = json(path.join(process.env.CLAUDE_BUDGET_DIR || path.join(home, '.c
 if (!snap) add('INFO', 'sin foto de consumo todavía', 'aparece tras la primera respuesta de una sesión interactiva (planes Pro/Max)');
 else { const min = Math.round((Date.now() - snap.at) / 60000); add(snap.fiveHour ? 'OK' : 'INFO', 'foto de consumo', snap.fiveHour ? `5 h al ${snap.fiveHour.pct}% · hace ${min} min` : 'sin rate_limits: el plan no los informa'); }
 
+// Herramientas de infraestructura que usa cloud-ops:iac-verify (la que falta se saltea)
+if (en[Object.keys(en).find((x) => x.startsWith('cloud-ops')) || ''] ) {
+  const t = ver('terraform', ['version']);
+  const b = ver('bicep', ['--version']) || ver('az', ['bicep', 'version']);
+  const ps = ['pwsh', 'powershell'].map((c) => { const r = spawnSync(c, ['-NoProfile', '-NonInteractive', '-Command', "$a = if (Get-Module -ListAvailable -Name PSScriptAnalyzer) { 'con PSScriptAnalyzer' } else { 'sin PSScriptAnalyzer: solo errores de sintaxis' }; Write-Output ($PSVersionTable.PSVersion.ToString() + ' ' + $a)"], { encoding: 'utf8', timeout: 20000 }); return !r.error && r.status === 0 ? `${c} ${(r.stdout || '').trim()}` : null; }).find(Boolean);
+  add('INFO', 'iac-verify: Terraform', t || 'no encontrado: los .tf no se verifican al terminar');
+  add('INFO', 'iac-verify: Bicep', b || 'no encontrado: los .bicep no se verifican al terminar');
+  add('INFO', 'iac-verify: PowerShell', ps || 'no encontrado: los .ps1 no se verifican al terminar');
+}
+
 // Interruptores
-const sw = ['AI_ENV_HOOKS', 'AI_ENV_HOOKS_SKIP', 'AI_ENV_GUARD_STRICT'].filter((k) => process.env[k]).map((k) => `${k}=${process.env[k]}`);
+const sw = ['AI_ENV_HOOKS', 'AI_ENV_HOOKS_SKIP', 'AI_ENV_GUARD_STRICT', 'AI_ENV_LOG'].filter((k) => process.env[k]).map((k) => `${k}=${process.env[k]}`);
 add(sw.some((s) => /^AI_ENV_HOOKS=(off|0|false|no)$/i.test(s)) ? 'AVISO' : 'INFO', 'interruptores de hooks', sw.length ? sw.join(' ') : 'ninguno (todos los hooks activos)');
 
 // Repo actual

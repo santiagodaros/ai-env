@@ -3,22 +3,22 @@
     "SessionStart": [
       {
         "matcher": "startup|resume|compact",
-        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/rehydrate.cjs\"" }]
+        "hooks": [{"type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/rehydrate.cjs\"", "timeout": 20}]
       }
     ],
     "PreToolUse": [
       {
         "matcher": "Edit|Write|MultiEdit",
-        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/arch-guard.cjs\"" }]
+        "hooks": [{"type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/arch-guard.cjs\"", "timeout": 10}]
       },
       {
         "matcher": "Bash|PowerShell",
-        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/session-guard.cjs\"" }]
+        "hooks": [{"type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/session-guard.cjs\"", "timeout": 10}]
       }
     ],
     "Stop": [
       {
-        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/stop-verify.cjs\"", "timeout": 300 }]
+        "hooks": [{"type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/stop-verify.cjs\"", "timeout": 300}]
       }
     ]
   }

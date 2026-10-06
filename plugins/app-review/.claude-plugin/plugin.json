@@ -1,6 +1,18 @@
 {
   "name": "app-review",
   "description": "Revisión de código de aplicación en tres lentes (identidad, seguridad, costo de APIs), reglas para React y llamadas a APIs, y subagentes reviewer y explorer.",
+  "author": {
+    "name": "ai-env contributors",
+    "url": "https://github.com/santiagodaros/ai-env"
+  },
+  "homepage": "https://github.com/santiagodaros/ai-env/tree/main/plugins/app-review",
+  "repository": "https://github.com/santiagodaros/ai-env",
   "license": "MIT",
-  "author": { "name": "ai-env contributors" }
+  "keywords": [
+    "revision",
+    "seguridad",
+    "identidad",
+    "react",
+    "typescript"
+  ]
 }

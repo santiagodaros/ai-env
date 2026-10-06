@@ -1,8 +1,19 @@
 {
   "name": "cloud-ops",
-  "description": "Skills para trabajo en Azure: verificación de afirmaciones contra Microsoft Learn (incluye su servidor MCP), inventario con Resource Graph (KQL), entregables a cliente, revisión y registro de estado.",
-  "license": "MIT",
+  "description": "Trabajo en Azure: verificación de afirmaciones contra Microsoft Learn (incluye su servidor MCP), inventario con Resource Graph (KQL), revisión de planes de Terraform y what-if de Bicep antes de aplicar, verificación de Terraform, Bicep y PowerShell al terminar, entregables a cliente y registro de estado.",
   "author": {
-    "name": "ai-env contributors"
-  }
+    "name": "ai-env contributors",
+    "url": "https://github.com/santiagodaros/ai-env"
+  },
+  "homepage": "https://github.com/santiagodaros/ai-env/tree/main/plugins/cloud-ops",
+  "repository": "https://github.com/santiagodaros/ai-env",
+  "license": "MIT",
+  "keywords": [
+    "azure",
+    "terraform",
+    "bicep",
+    "powershell",
+    "kql",
+    "finops"
+  ]
 }

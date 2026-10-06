@@ -1,0 +1,7 @@
+{"status":"Succeeded","changes":[
+ {"resourceId":"/subscriptions/SUB/resourceGroups/rg-demo/providers/Microsoft.Sql/servers/sql-demo/databases/db1","changeType":"Delete","before":{"properties":{}},"after":null},
+ {"resourceId":"/subscriptions/SUB/resourceGroups/rg-demo/providers/Microsoft.Storage/storageAccounts/stdemo","changeType":"Modify","delta":[{"path":"properties.publicNetworkAccess","propertyChangeType":"Modify","before":"Disabled","after":"Enabled"},{"path":"sku","propertyChangeType":"Modify","children":[{"path":"name","propertyChangeType":"Modify","before":"Standard_GRS","after":"Standard_LRS"}]}]},
+ {"resourceId":"/subscriptions/SUB/resourceGroups/rg-demo/providers/Microsoft.Authorization/roleAssignments/ra1","changeType":"Create","after":{"properties":{"principalType":"ServicePrincipal"}}},
+ {"resourceId":"/subscriptions/SUB/resourceGroups/rg-demo/providers/Microsoft.Network/virtualNetworks/vnet1","changeType":"NoChange"},
+ {"resourceId":"/subscriptions/SUB/resourceGroups/rg-demo/providers/Microsoft.Web/sites/app1","changeType":"Unsupported"}
+]}

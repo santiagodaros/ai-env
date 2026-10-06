@@ -1,7 +1,18 @@
 {
   "name": "dev-flow",
-  "description": "Workflow de desarrollo por features: arquitectura hexagonal aprobada antes del código, una sesión por feature con topes, compuertas de pruebas y seguridad, cierre documentado y presupuesto del límite de 5 h.",
+  "description": "Workflow de desarrollo: arquitectura hexagonal aprobada antes del código, una sesión por feature con topes, camino corto para arreglos chicos, compuertas de pruebas y seguridad, cierre documentado y presupuesto del límite de 5 h.",
+  "author": {
+    "name": "ai-env contributors",
+    "url": "https://github.com/santiagodaros/ai-env"
+  },
+  "homepage": "https://github.com/santiagodaros/ai-env/tree/main/plugins/dev-flow",
+  "repository": "https://github.com/santiagodaros/ai-env",
   "license": "MIT",
-  "author": { "name": "ai-env contributors" },
-  "keywords": ["workflow", "arquitectura", "hexagonal", "features", "adr"]
+  "keywords": [
+    "workflow",
+    "arquitectura",
+    "hexagonal",
+    "features",
+    "adr"
+  ]
 }

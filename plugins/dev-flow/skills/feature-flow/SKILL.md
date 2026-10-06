@@ -41,4 +41,4 @@ Objetivo: que cada feature tenga su propio contexto en archivos, para continuarl
 
 - Esta skill no implementa la feature: prepara el terreno. Implementar ocurre en la sesión de cada feature.
 - Una sesión lanzada por este flujo no puede lanzar otras.
-- Límites por defecto y techos fijos en `scripts/launch.cjs` (2 simultáneas, 3 por día, 10 min de espera; techos 3, 6 y 5 min que el archivo de configuración no puede superar).
+- Límites por defecto y techos fijos en `scripts/launch.cjs` (2 simultáneas, 3 cada 24 horas, 10 min de espera; techos 3, 6 y 5 min que el archivo de configuración no puede superar).

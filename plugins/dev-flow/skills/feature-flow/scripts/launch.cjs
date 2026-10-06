@@ -55,9 +55,9 @@ const regFile = path.join(regDir, 'launches.json');
 let reg = [];
 try { reg = JSON.parse(fs.readFileSync(regFile, 'utf8')); } catch { /* primer uso */ }
 const now = Date.now(), DAY = 24 * 3600 * 1000;
-const today = new Date().toDateString();
-const todayN = reg.filter(r => new Date(r.at).toDateString() === today).length;
-if (todayN >= maxPerDay) fail(`ya lanzaste ${todayN} sesión(es) hoy (tope ${maxPerDay}).`);
+// Ventana móvil de 24 h, no día calendario: si no, el tope se reinicia a medianoche y se puede duplicar en minutos.
+const todayN = reg.filter(r => now - r.at < DAY).length;
+if (todayN >= maxPerDay) fail(`ya lanzaste ${todayN} sesión(es) en las últimas 24 h (tope ${maxPerDay}).`);
 const last = reg.length ? Math.max(...reg.map(r => r.at)) : 0;
 if (now - last < cooldown * 60000) fail(`esperá ${Math.ceil((cooldown * 60000 - (now - last)) / 60000)} min desde el último lanzamiento (espera mínima ${cooldown} min).`);
 if (reg.some(r => r.slug === slug && now - r.at < DAY)) fail(`"${slug}" ya se lanzó en las últimas 24 h. Retomala con claude attach o claude -w ${slug}.`);
@@ -76,7 +76,7 @@ let presupuesto = 'Presupuesto: sin datos del límite de 5 h.';
 const prompt = `Retoma la feature ${slug}: lee docs/features/${slug}/HANDOFF.md y SPEC.md y segui desde el proximo paso. No abras sesiones nuevas.`;
 const args = ['--bg', '-w', slug, '-n', slug, prompt];
 console.log(`Feature: ${slug}`);
-console.log(`Cupos: ${bg}/${maxConcurrent} en segundo plano, ${todayN}/${maxPerDay} lanzadas hoy, espera mínima ${cooldown} min.`);
+console.log(`Cupos: ${bg}/${maxConcurrent} en segundo plano, ${todayN}/${maxPerDay} lanzadas en 24 h, espera mínima ${cooldown} min.`);
 console.log(presupuesto);
 console.log(`Comando: claude --bg -w ${slug} -n ${slug} "${prompt}"`);
 console.log(`Alternativa manual (sin gastar cupo): claude -w ${slug} -n ${slug}`);

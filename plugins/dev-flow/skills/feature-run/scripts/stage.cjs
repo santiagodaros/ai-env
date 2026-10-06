@@ -16,7 +16,7 @@ const read = f => { try { return fs.readFileSync(path.join(root, f), 'utf8'); } 
 const tracked = f => lib.git(root, ['ls-files', '--error-unmatch', f]).status === 0;
 
 const spec = read(rel('SPEC.md'));
-if (!spec || spec.trim().length < 200 || !read(rel('STATE.md')) || !read(rel('HANDOFF.md'))) done('spec', 'faltan o están incompletos SPEC, STATE o HANDOFF', 'feature-flow: crear docs/features/<slug>/ y aprobar el SPEC con el usuario');
+if (!spec || spec.trim().length < 200 || !read(rel('STATE.md')) || !read(rel('HANDOFF.md'))) done('spec', 'faltan o están incompletos SPEC, STATE o HANDOFF', '/dev-flow:feature-flow: crear docs/features/<slug>/ y aprobar el SPEC con el usuario');
 if (!['SPEC.md', 'STATE.md', 'HANDOFF.md'].every(f => tracked(rel(f)))) done('commit-docs', 'los documentos de la feature no están commiteados', 'commitear solo docs/features/<slug>');
 
 const base = lib.baseRef(root, val('--base'));
@@ -32,6 +32,6 @@ const tg = testGate(files, state);
 if (!tg.ok) done('tests', tg.note, 'agregar pruebas para el código cambiado (o que el usuario declare "Sin pruebas: <motivo>")');
 
 const closed = /^Estado:\s*cerrada/im.test(state || '') && read(`docs/design/${slug}.md`) && (read('docs/CHANGELOG.md') || '').includes(`<!-- feature:${slug} -->`);
-if (!closed) done('close', 'faltan el cierre, el CHANGELOG o el diseño final', 'feature-close');
+if (!closed) done('close', 'faltan el cierre, el CHANGELOG o el diseño final', '/dev-flow:feature-close');
 if (!read(rel('PR.md'))) done('pr', 'falta la descripción del PR', 'node ../feature-close/scripts/pr-body.cjs --slug <slug> y commitear');
-done('done', 'feature cerrada con descripción de PR lista', 'abrir el PR solo con el sí explícito del usuario (pr-prep)');
+done('done', 'feature cerrada con descripción de PR lista', 'abrir el PR solo con el sí explícito del usuario (/dev-flow:pr-prep)');

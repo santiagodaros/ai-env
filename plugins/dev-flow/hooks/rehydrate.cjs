@@ -8,7 +8,8 @@ const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
 const os = require('os');
-if (require('./lib.cjs').off('rehydrate')) process.exit(0);
+const lib = require('./lib.cjs');
+if (lib.off('rehydrate')) process.exit(0);
 
 // Mantiene al día la statusline instalada por /dev-flow:setup (la copia vive fuera del plugin porque la ruta
 // del plugin cambia con cada versión). Mejor esfuerzo: nunca rompe el arranque.
@@ -66,12 +67,29 @@ process.stdin.on('end', () => {
       }
       const state = read(path.join(featRoot, s, 'STATE.md'));
       const handoff = read(path.join(featRoot, s, 'HANDOFF.md'));
+      // Etapa y siguiente paso según archivos y git: así el flujo se conduce solo, sin depender de que alguien recuerde la skill.
+      let etapa = '';
+      try {
+        const sc = path.join(__dirname, '..', 'skills', 'feature-run', 'scripts', 'stage.cjs');
+        const r = spawnSync(process.execPath, [sc, '--slug', s], { cwd, encoding: 'utf8', timeout: 15000 });
+        const j = JSON.parse(r.stdout || '{}');
+        if (j.stage) etapa = `Etapa actual: ${j.stage} (${j.why}). Siguiente paso: ${j.next}. Para seguir de corrido: /dev-flow:feature-run ${s}.\n\n`;
+      } catch { /* sin etapa: se inyecta igual el contexto */ }
       out.push(
         `Estás trabajando la feature "${s}". Contexto desde docs/features/${s}/ (leé SPEC.md si necesitás el detalle). ` +
           'Antes de seguir, resumí en 3 líneas el próximo paso y pedí confirmación. No abras sesiones nuevas.\n\n' +
-          `## HANDOFF\n${handoff.slice(0, MAX / 2)}\n\n## STATE\n${state.slice(0, MAX / 2)}`
+          etapa + `## HANDOFF\n${handoff.slice(0, MAX / 2)}\n\n## STATE\n${state.slice(0, MAX / 2)}`
       );
     }
+  }
+
+  // Arquitectura declarada y todavía sin aprobar: avisarlo al arrancar, antes de que el primer intento de escribir código choque con arch-guard.
+  if (source !== 'compact' && fs.existsSync(path.join(cwd, 'architecture.json'))) {
+    try {
+      const L = require(path.join(__dirname, '..', 'skills', 'arch-first', 'scripts', 'archlib.cjs'));
+      const st = L.approvalState(L.loadConfig(path.join(cwd, 'architecture.json')));
+      if (!st.approved) out.push(`Este repo tiene una arquitectura sin aprobar (${st.reason}). No se puede escribir código hasta que la persona la apruebe: mostrale el preview de /dev-flow:arch-first y pedile que corra approve.cjs en su terminal.`);
+    } catch { /* architecture.json ilegible: lo informa arch-guard al escribir */ }
   }
 
   if (out.length) process.stdout.write(out.join('\n\n---\n\n') + '\n');

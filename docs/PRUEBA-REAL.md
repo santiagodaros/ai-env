@@ -91,6 +91,13 @@ Esperado: rechaza si quedan "(completar)" o cero puertos; con el diseño complet
 
 - [ ] 4.1  - [ ] 4.2  - [ ] 4.3  - [ ] 4.4  - [ ] 4.5  - [ ] 4.6  - [ ] 4.7
 
+## 4b. Camino corto
+
+Con la arquitectura aprobada, pedí: `/dev-flow:quick-fix cambiar el texto del saludo`.
+
+- [ ] Claude hace el cambio con su prueba, corre `quick.cjs` y queda una línea en `docs/CHANGELOG.md`
+- [ ] si le pedís en el mismo arreglo tocar `package.json`, el script responde "NO es un cambio chico" y propone el flujo completo
+
 ## 5. Una feature chica
 
 ```
@@ -105,10 +112,36 @@ dir docs\features
 claude agents --json     # si lanzaste una sesión en segundo plano: anotá el campo "kind"
 ```
 
-- [ ] al abrir una sesión en la rama de la feature, Claude ya conoce el HANDOFF sin que se lo pegues
+- [ ] al abrir una sesión en la rama de la feature, Claude ya conoce el HANDOFF, la etapa y el paso siguiente sin que se lo pegues
 - [ ] `feature-close` frena si falta una prueba y cierra cuando está todo
 - [ ] quedan SPEC, STATE, HANDOFF, entrada de changelog, diseño y `PR.md`
 - [ ] valor de `kind` para sesiones en segundo plano: ______
+
+## 5b. Infraestructura (plugin `cloud-ops`)
+
+```powershell
+New-Item -ItemType Directory scripts | Out-Null
+```
+
+| # | Qué hacer | Esperado |
+|---|---|---|
+| 5b.1 | "Creá `scripts/roto.ps1` con una función a la que le falte la llave de cierre" | Al terminar, **iac-verify no lo deja cerrar** y muestra el error de sintaxis con archivo y línea |
+| 5b.2 | "Arreglalo" | Termina sin objeciones |
+| 5b.3 | "Ejecutá `terraform apply`" | **Pide confirmación**: falta un plan guardado. Rechazala |
+| 5b.4 | "Voy a aplicar un cambio de Terraform que pasa un storage de GRS a LRS. ¿Cómo seguimos?" | Se activa `cloud-ops:iac-change-review` y propone generar y resumir el plan antes |
+| 5b.5 | Si tenés Terraform: `/dev-flow:doctor` | Informa la versión de Terraform, Bicep y PowerShell que va a usar `iac-verify` |
+
+- [ ] 5b.1  - [ ] 5b.2  - [ ] 5b.3  - [ ] 5b.4  - [ ] 5b.5
+
+Si tenés un plan real a mano (de un entorno de prueba), corré el resumen y comparalo con lo que muestra `terraform show`: es la única parte que no pude probar contra un despliegue real.
+
+```powershell
+terraform show -json tfplan > plan.json
+node "<carpeta de cloud-ops>\skills\iac-change-review\scripts\plan-summary.cjs" plan.json
+```
+
+- [ ] el resumen coincide con el plan real
+- [ ] lo mismo con un what-if real de Bicep (`az deployment group what-if ... --no-pretty-print > whatif.json`)
 
 ## 6. Skills que se activan solas
 
@@ -123,6 +156,15 @@ Sin nombrar la skill:
 - [ ] 6.1  - [ ] 6.2  - [ ] 6.3
 
 `/skill-doctor` muestra qué skills se usaron y cuáles solo ocupan contexto.
+
+## 6b. Qué interrumpió
+
+```
+/dev-flow:doctor stats
+```
+
+- [ ] la tabla lista los bloqueos y pedidos de confirmación de esta prueba, por hook y regla
+- [ ] `Get-Content $HOME\.claude\ai-env\usage.jsonl` no contiene comandos ni rutas
 
 ## 7. Cierre
 

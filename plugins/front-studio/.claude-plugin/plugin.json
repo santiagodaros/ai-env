@@ -1,6 +1,17 @@
 {
   "name": "front-studio",
   "description": "Rediseño de front con preview en vivo, brand kit, dirección visual anti-look-IA y re-auditoría de seguridad.",
+  "author": {
+    "name": "ai-env contributors",
+    "url": "https://github.com/santiagodaros/ai-env"
+  },
+  "homepage": "https://github.com/santiagodaros/ai-env/tree/main/plugins/front-studio",
+  "repository": "https://github.com/santiagodaros/ai-env",
   "license": "MIT",
-  "author": { "name": "ai-env contributors" }
+  "keywords": [
+    "frontend",
+    "diseno",
+    "react",
+    "accesibilidad"
+  ]
 }

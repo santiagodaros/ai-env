@@ -13,6 +13,10 @@ Feature: $ARGUMENTS
 
 Orquesta las skills de este plugin en secuencia. El estado vive en archivos y git, no en el chat: si se corta, otra corrida retoma donde quedó.
 
+## ¿Hace falta el flujo completo?
+
+Si el pedido es un arreglo puntual (un bug, un texto, un ajuste de pocas líneas en uno o dos archivos), no abras una feature: proponé `/dev-flow:quick-fix`. Su script decide con reglas fijas si califica; si no califica, volvés acá sin perder lo hecho.
+
 ## Antes de empezar (una sola confirmación)
 
 Si `$ARGUMENTS` es una descripción y no un slug existente, proponé un slug (minúsculas, números y guiones, hasta 5 palabras) y avisá lo que vas a hacer: crear la rama `feature/<slug>`, escribir documentos en `docs/features/<slug>/`, implementar, cerrar con documentos y dejar la descripción del PR. **No** vas a hacer push ni abrir el PR sin un sí explícito. Pedí confirmación una vez.

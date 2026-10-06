@@ -8,20 +8,12 @@ const { spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
-if (require('./lib.cjs').off('stop-verify')) process.exit(0);
-let raw = '';
-process.stdin.on('data', (c) => (raw += c));
-process.stdin.on('end', () => {
-  let input = {};
-  try {
-    input = JSON.parse(raw);
-  } catch {
-    process.exit(0);
-  }
+const { run, log, projectDir } = require('./lib.cjs');
 
+run('stop-verify', (input) => {
   if (input.stop_hook_active) process.exit(0); // ya bloqueó una vez en este turno: no entrar en bucle
 
-  const cwd = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
+  const cwd = projectDir(input);
   if (!fs.existsSync(path.join(cwd, 'package.json'))) process.exit(0);
   try { if (JSON.parse(fs.readFileSync(path.join(cwd, '.claude', 'dev-flow.json'), 'utf8')).stopVerify === false) process.exit(0); } catch { /* sin config: activo */ }
 
@@ -49,6 +41,7 @@ process.stdin.on('end', () => {
   }
 
   if (failures.length > 0) {
+    log('stop-verify', 'block', 'verify-failed');
     process.stderr.write(
       `No des el trabajo por terminado: la verificación automática falló.\n\n${failures.join('\n\n')}\n`
     );

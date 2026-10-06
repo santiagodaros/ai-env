@@ -14,7 +14,7 @@ const act = (msg, fn) => { todo.push(msg); if (apply) fn(); };
 // docs/STATE.md
 if (read('docs/STATE.md') === null) act('crear docs/STATE.md', () => { fs.mkdirSync(path.join(dir, 'docs'), { recursive: true }); fs.writeFileSync(path.join(dir, 'docs', 'STATE.md'), '# STATE\n\nEstado vivo del proyecto. El hook rehydrate lo reinyecta tras /compact.\n\n## Decisiones\n- \n\n## Hecho\n- \n\n## Pendiente\n- \n'); });
 // .gitignore
-const want = ['.claude/.feature-flow/', '.claude/settings.local.json', 'CLAUDE.local.md', '.private-terms'];
+const want = ['.claude/.feature-flow/', '.claude/settings.local.json', 'CLAUDE.local.md', '.private-terms', 'tfplan', '*.tfplan', 'plan.json', 'whatif.json'];
 const gi = read('.gitignore') || '';
 const miss = want.filter(w => !gi.split(/\r?\n/).includes(w));
 if (miss.length) act(`agregar a .gitignore: ${miss.join(', ')}`, () => fs.appendFileSync(path.join(dir, '.gitignore'), (gi && !gi.endsWith('\n') ? '\n' : '') + '# Claude Code: estado local\n' + miss.join('\n') + '\n'));
