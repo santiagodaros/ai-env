@@ -33,4 +33,4 @@ Cada ítem se evalúa PASA / FALLA / N/A con evidencia `archivo:línea`.
 - https://learn.microsoft.com/en-us/entra/workload-id/workload-identity-federation
 - https://learn.microsoft.com/en-us/security/benchmark/azure/mcsb-v2-identity-management
 
-Los ítems de PKCE y de `localStorage` son práctica general de seguridad web; no están verificados contra Learn en este kit.
+Los ítems de PKCE y de `localStorage` son práctica general de seguridad web; no están verificados contra Learn en este plugin.

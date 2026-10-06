@@ -1,0 +1,15 @@
+name: architecture
+on: [push, pull_request]
+permissions: { contents: read }
+jobs:
+  hexagonal:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Trae el verificador (plugin dev-flow de ai-env)
+        uses: actions/checkout@v4
+        with: { repository: santiagodaros/ai-env, path: .ai-env, ref: main }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Regla de dependencia hexagonal (solo actúa si hay architecture.json)
+        run: node .ai-env/plugins/dev-flow/skills/arch-first/scripts/arch-check.cjs

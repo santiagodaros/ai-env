@@ -12,11 +12,17 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
-      - name: Los plugins generados deben estar commiteados
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          node scripts/sync-plugins.cjs
-          git diff --exit-code
       - run: node scripts/check.cjs
-      - name: Prueba de humo del kit (hooks, límites, gates, presupuesto)
-        run: node kits/hub-ai-kit/smoke-test.js
+      - name: Prueba de humo de los plugins (hooks, topes, compuertas, presupuesto, setup)
+        run: node tests/smoke-test.js
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Validar el marketplace y cada plugin con la CLI de Claude Code
+        run: |
+          npm install -g @anthropic-ai/claude-code
+          claude plugin validate .
+          for p in plugins/*; do claude plugin validate "$p"; done

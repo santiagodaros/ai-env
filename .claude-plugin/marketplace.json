@@ -1,10 +1,12 @@
 {
   "name": "ai-env",
-  "description": "Skills, subagentes y kits para trabajar con Claude Code en proyectos web y de cloud (Azure).",
+  "description": "Entorno de trabajo para Claude Code: hooks de protección, workflow por features con arquitectura hexagonal, revisión de aplicaciones, operación de Azure y rediseño de front.",
   "owner": { "name": "ai-env contributors" },
   "plugins": [
-    { "name": "front-studio", "source": "./plugins/front-studio", "description": "Rediseño de front con preview en vivo, brand kit y re-auditoría de seguridad." },
-    { "name": "app-review", "source": "./plugins/app-review", "description": "Revisión de arquitectura y PR, entrevista de spec, subagentes reviewer y explorer." },
-    { "name": "cloud-ops", "source": "./plugins/cloud-ops", "description": "Skills para Azure: claim-check contra Microsoft Learn, KQL de inventario, entregables, registro de estado." }
+    { "name": "guard", "source": "./plugins/guard", "description": "Hooks de protección para cualquier repo: secretos, archivos protegidos, lectura de .env y comandos destructivos (git, rm, Azure, Terraform)." },
+    { "name": "dev-flow", "source": "./plugins/dev-flow", "description": "Workflow por features: arquitectura hexagonal aprobada antes del código, una sesión por feature con topes, compuertas de pruebas y seguridad, cierre documentado y presupuesto del límite de 5 h." },
+    { "name": "app-review", "source": "./plugins/app-review", "description": "Revisión de código de aplicación en tres lentes (identidad, seguridad, costo de APIs), reglas para React y llamadas a APIs, y subagentes reviewer y explorer." },
+    { "name": "cloud-ops", "source": "./plugins/cloud-ops", "description": "Skills para Azure: verificación de afirmaciones contra Microsoft Learn, KQL de inventario, entregables y registro de estado. Incluye el servidor MCP de Microsoft Learn." },
+    { "name": "front-studio", "source": "./plugins/front-studio", "description": "Rediseño de front con preview en vivo, brand kit y re-auditoría de seguridad." }
   ]
 }

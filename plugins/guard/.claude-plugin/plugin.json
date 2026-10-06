@@ -1,0 +1,7 @@
+{
+  "name": "guard",
+  "description": "Hooks de protección que funcionan en cualquier repo: archivos protegidos y secretos, lectura de .env y comandos destructivos (git, rm, Azure, Terraform).",
+  "license": "MIT",
+  "author": { "name": "ai-env contributors" },
+  "keywords": ["hooks", "seguridad", "secretos", "azure"]
+}

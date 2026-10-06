@@ -1,166 +1,139 @@
-# Prueba real del kit (Windows / PowerShell)
+# Prueba real en tu máquina (Windows / PowerShell)
 
-Objetivo: confirmar con la CLI real lo que el smoke test solo cubre con un `claude` simulado.
-Se corre sobre un repo **descartable**, nunca sobre un repo de trabajo.
-Marcá cada paso. Si uno falla, anotá el mensaje exacto y seguí con el siguiente: son independientes salvo donde se indica.
+Objetivo: confirmar en tu notebook lo que ya está verificado en Linux. Los hooks de plugin se probaron en una sesión real de Claude Code 2.1.290 en Linux (bloqueos de `guard` y `dev-flow`, relectura al arrancar, verificación al terminar). Falta Windows, donde hay reportes abiertos sobre rutas en hooks de plugin.
 
-## 0. Preparación
+Se corre sobre un repo **descartable**. Marcá cada paso; si uno falla, anotá el mensaje exacto y seguí: son independientes salvo donde se indica.
+
+## 0. Si habías instalado el kit viejo
+
+Si alguna vez corriste `install.js`, limpiá primero (si no, los hooks corren dos veces):
 
 ```powershell
-git clone https://github.com/santiagodaros/ai-env $HOME\ai-env
-cd $HOME\ai-env
-git config core.hooksPath .githooks
-node scripts/check.cjs            # esperado: OK, sin hallazgos
-node kits/hub-ai-kit/smoke-test.js  # esperado: 0 fallas (los avisos son normales)
+# En cada repo donde lo instalaste:
+Remove-Item -Recurse -Force .claude\hooks, .claude\skills, .claude\agents, .claude\rules -ErrorAction SilentlyContinue
+notepad .claude\settings.json      # borrá el bloque "hooks"
 
-New-Item -ItemType Directory $HOME\kit-test | Out-Null
-cd $HOME\kit-test
+# En tu usuario:
+'azure-claim-check','azure-inventory-kql','client-deliverables','context-ledger','deliverable-review' |
+  ForEach-Object { Remove-Item -Recurse -Force "$HOME\.claude\skills\$_" -ErrorAction SilentlyContinue }
+Remove-Item "$HOME\.claude\statusline.cjs" -ErrorAction SilentlyContinue
+```
+
+- [ ] no aplica / limpiado
+
+## 1. Instalar
+
+```powershell
+claude --version                         # 2.1.290 o superior
+claude plugin marketplace add santiagodaros/ai-env
+'guard','dev-flow','app-review','cloud-ops','front-studio' | ForEach-Object { claude plugin install "$_@ai-env" }
+claude plugin list                       # esperado: los 5 en "enabled"
+```
+
+- [ ] los 5 plugins quedan habilitados
+
+## 2. Repo descartable
+
+```powershell
+New-Item -ItemType Directory $HOME\ai-env-test | Out-Null
+cd $HOME\ai-env-test
 git init -b main
 git commit --allow-empty -m "init"
+Set-Content .env "TOKEN=no-deberia-verse"
+claude
 ```
 
-- [ ] check.cjs OK
-- [ ] smoke-test sin fallas en tu Windows
-- [ ] repo descartable creado
+Dentro de Claude Code:
 
-## 1. `.private-terms` (una sola vez, nunca se commitea)
-
-```powershell
-cd $HOME\ai-env
-notepad .private-terms     # un término por línea (nombres de clientes, dominios internos)
-git status --short         # esperado: .private-terms NO aparece (está en .gitignore)
-node scripts/check.cjs     # esperado: OK
-"cliente-de-prueba" | Add-Content .private-terms
-Set-Content $env:TEMP\t.md "mencion cliente-de-prueba"
-Copy-Item $env:TEMP\t.md .\docs\t.md; node scripts/check.cjs   # esperado: FALLA nombrando docs/t.md
-Remove-Item .\docs\t.md
+```
+/dev-flow:setup
+/dev-flow:doctor
 ```
 
-- [ ] `.private-terms` ignorado por git
-- [ ] el chequeo detecta un término de prueba
-- [ ] borré el archivo de prueba y la línea de prueba
+Esperado: `setup` muestra qué haría, pide tu visto bueno y con `--apply` instala la statusline y activa la actualización automática. Reiniciá Claude Code. `doctor` no debe mostrar ninguna `FALLA`.
 
-## 2. Instalación del kit
+- [ ] `setup` simula antes de escribir y deja `settings.json.bak`
+- [ ] tras reiniciar, la barra muestra `5h N% (reinicia en…)`
+- [ ] existe `$HOME\.claude\.budget\latest.json`
+- [ ] `doctor` sin `FALLA`
 
-```powershell
-cd $HOME\ai-env\kits\hub-ai-kit
-node install.js --repo "$HOME\kit-test" --dry-run   # revisá la salida
-node install.js --repo "$HOME\kit-test"
-```
-
-Esperado: imprime líneas `[MANUAL]` para `~/.claude/settings.json` (statusline) y, si ya tenés CLAUDE.md, para ese archivo.
-
-- [ ] dry-run coherente
-- [ ] instalación sin errores
-- [ ] pegué el bloque `statusLine` en `~/.claude/settings.json` (cambiando `TU_USUARIO`)
-
-## 3. Statusline y presupuesto
-
-```powershell
-cd $HOME\kit-test
-claude          # mandá cualquier mensaje y esperá la respuesta
-```
-
-Esperado en la barra: `[modelo] | ctx % | 5h N% (reinicia en…) | 7d N% | $costo`.
-En otra terminal:
-
-```powershell
-Get-Content $HOME\.claude\.budget\latest.json
-node .claude\skills\budget-plan\scripts\budget.cjs status
-```
-
-Esperado: JSON con `fiveHour.pct`; `status` muestra tu % disponible.
-Si `fiveHour` falta: solo existe en planes Pro/Max y recién después de la primera respuesta.
-
-- [ ] la barra muestra el 5h
-- [ ] existe `latest.json`
-- [ ] `budget.cjs status` lo lee
-
-## 4. Hooks con la CLI real (dentro de `claude` en kit-test)
+## 3. Hooks de `guard`
 
 | # | Pedile a Claude | Esperado |
 |---|---|---|
-| 4.1 | "Creá `src/domain/x.ts` con una función cualquiera" | **Bloqueado** por arch-guard: no hay arquitectura aprobada |
-| 4.2 | "Leé el archivo `.env`" (creá uno vacío antes) | **Denegado** por permisos |
-| 4.3 | "Editá `.claude/settings.json`" | **Bloqueado** por protect-files |
-| 4.4 | "Ejecutá `claude --bg -n x`" | **Bloqueado** por session-guard |
+| 3.1 | "Usá Write para crear `.env.local` con `A=1`" | **Bloqueado** por protect-files |
+| 3.2 | "Leé el archivo `.env`" | **Bloqueado** por secret-read; el valor no aparece |
+| 3.3 | "Ejecutá `Get-Content .env`" | **Bloqueado** por bash-guard |
+| 3.4 | "Ejecutá `git reset --hard`" | **Pide confirmación** con el motivo |
+| 3.5 | "Ejecutá `az group delete -n rg-inexistente-prueba --yes`" | **Pide confirmación**. Rechazala |
+| 3.6 | "Creá `notas.md` con una línea" | Se permite |
 
-- [ ] 4.1  - [ ] 4.2  - [ ] 4.3  - [ ] 4.4
+- [ ] 3.1  - [ ] 3.2  - [ ] 3.3  - [ ] 3.4  - [ ] 3.5  - [ ] 3.6
 
-Si alguno NO bloquea, es el hallazgo más importante de la prueba: anotá qué hook y qué mensaje (o falta de mensaje) viste.
+Si alguno no bloquea, es el hallazgo más importante: anotá qué hook y qué viste. En 3.4 y 3.5 anotá también **cómo se ve** el pedido de confirmación; en modo no interactivo se comporta como bloqueo, en interactivo no lo pude observar.
 
-## 5. arch-first de punta a punta
+## 4. Hooks y flujo de `dev-flow`
 
-Dentro de `claude`: `/arch-first` y pedir "una CLI de automatización en TypeScript llamada demo".
-Esperado: crea el esqueleto y el preview **sin código**.
+| # | Qué hacer | Esperado |
+|---|---|---|
+| 4.1 | "Ejecutá `claude -p hola`" | **Bloqueado** por session-guard |
+| 4.2 | `/dev-flow:arch-first una CLI de automatización en TypeScript llamada demo` | Crea esqueleto, `architecture.json` y preview **sin código** |
+| 4.3 | "Creá `src/domain/saludo.ts` con una función" | **Bloqueado** por arch-guard: arquitectura sin aprobar |
+| 4.4 | "Corré approve.cjs" | **Bloqueado**: la aprobación es tuya |
+
+Aprobación, en **tu** terminal (la ruta la muestra Claude en el paso 4.2):
 
 ```powershell
-node .claude\skills\arch-first\scripts\arch-check.cjs   # esperado: sin violaciones
-start preview.html                                       # revisá capas y puertos
+node "<ruta que te indicó>\approve.cjs"
 ```
 
-Aprobación (**la corrés vos, en tu terminal, no dentro de Claude**):
+Esperado: rechaza si quedan "(completar)" o cero puertos; con el diseño completo sella el hash.
 
-```powershell
-node .claude\skills\arch-first\scripts\approve.cjs
+| # | Qué hacer | Esperado |
+|---|---|---|
+| 4.5 | Repetí 4.3 | Ahora **se permite** |
+| 4.6 | "En `src/domain/saludo.ts` importá `fs`" | **Bloqueado** por la regla de dependencia |
+| 4.7 | `/dev-flow:project-init` y aceptá `--settings` | Crea `docs/STATE.md`, completa `.gitignore` y declara los plugins en `.claude/settings.json` |
+
+- [ ] 4.1  - [ ] 4.2  - [ ] 4.3  - [ ] 4.4  - [ ] 4.5  - [ ] 4.6  - [ ] 4.7
+
+## 5. Una feature chica
+
+```
+/dev-flow:feature-flow agregar un comando que salude por nombre
 ```
 
-Esperado: rechaza si quedan "(completar)" o cero puertos; si el diseño está completo, sella el hash.
-Después, pedile a Claude el mismo archivo del 4.1: ahora **debe permitirlo**.
-Probá la violación: pedile que importe `fs` desde `src/domain`. Esperado: bloqueo.
-
-- [ ] esqueleto + preview sin código
-- [ ] approve.cjs rechaza el diseño incompleto
-- [ ] approve.cjs sella el diseño completo
-- [ ] tras aprobar, escribir código se permite
-- [ ] el import prohibido en domain se bloquea
-- [ ] el preview se ve legible (capas, puertos, adaptadores)
-
-## 6. Una feature real, chica
-
-`/feature-flow` con un slug (`demo-saludo`), después en la sesión de la feature `/spec-interview`, implementar, `/feature-close`.
-Verificá:
+Seguí el flujo hasta `/dev-flow:feature-close`. Después:
 
 ```powershell
 git log --oneline
-dir docs\features\demo-saludo
+dir docs\features
+claude agents --json     # si lanzaste una sesión en segundo plano: anotá el campo "kind"
 ```
 
-Esperado: SPEC, STATE, HANDOFF, entrada de changelog y DESIGN as-built; si falta algo, `feature-close` termina con código 3 y dice qué.
+- [ ] al abrir una sesión en la rama de la feature, Claude ya conoce el HANDOFF sin que se lo pegues
+- [ ] `feature-close` frena si falta una prueba y cierra cuando está todo
+- [ ] quedan SPEC, STATE, HANDOFF, entrada de changelog, diseño y `PR.md`
+- [ ] valor de `kind` para sesiones en segundo plano: ______
 
-Lanzamiento de sesión (solo si querés probarlo; consume cuota):
+## 6. Skills que se activan solas
+
+Sin nombrar la skill:
+
+| # | Pedido | Skill esperada |
+|---|---|---|
+| 6.1 | "¿Cuántas reglas admite como máximo un NSG? Va a un informe." | `cloud-ops:azure-claim-check` (y consulta Microsoft Learn) |
+| 6.2 | "Checkpoint: cerramos que el DR va a región secundaria." | `cloud-ops:context-ledger` |
+| 6.3 | "Antes de mergear revisá este cambio: guardo el token en localStorage." | `app-review:app-architecture-review` |
+
+- [ ] 6.1  - [ ] 6.2  - [ ] 6.3
+
+`/skill-doctor` muestra qué skills se usaron y cuáles solo ocupan contexto.
+
+## 7. Cierre
+
+Pasame la lista de pasos que fallaron con el mensaje exacto. Limpieza:
 
 ```powershell
-node .claude\skills\feature-flow\scripts\launch.cjs --slug demo-saludo           # dry: muestra qué haría
-node .claude\skills\feature-flow\scripts\launch.cjs --slug demo-saludo --launch  # pide confirmación; abre sesión real
-claude agents --json    # anotá el campo "kind" de la sesión lanzada
+cd $HOME; Remove-Item -Recurse -Force $HOME\ai-env-test
 ```
-
-- [ ] los 4 documentos de la feature existen
-- [ ] feature-close bloquea cuando corresponde
-- [ ] `--launch` pide confirmación y respeta los topes (2 simultáneas / 3 por día / 10 min)
-- [ ] valor de `kind` para sesiones en background: ______
-
-## 7. security-diff y adr
-
-```powershell
-$k = 'AK' + 'IA' + 'ABCDEFGHIJKLMNOP'
-Add-Content src\demo.ts "const k = `"$k`";"
-git add -A
-node .claude\skills\security-diff\scripts\secscan.cjs
-```
-
-Esperado: hallazgo alto por secreto. Quitá la línea después.
-
-```powershell
-node .claude\skills\adr\scripts\adr.cjs new "usar X en vez de Y"
-node .claude\skills\adr\scripts\adr.cjs check    # esperado: avisa que el ADR está incompleto
-```
-
-- [ ] secscan detecta el secreto
-- [ ] adr check detecta el ADR incompleto
-
-## 8. Cierre
-
-Pegame acá (o en el chat) la lista de pasos que fallaron con el mensaje exacto. Con eso corrijo el kit.
-Limpieza: `Remove-Item -Recurse -Force $HOME\kit-test`.

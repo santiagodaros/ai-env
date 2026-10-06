@@ -32,4 +32,4 @@ Cada ítem se evalúa PASA / FALLA / N/A con evidencia `archivo:línea`.
 - https://learn.microsoft.com/en-us/azure/cost-management-billing/costs/manage-automation
 - Guía de manejo de 429 en Foundry / Azure OpenAI (`retry-after-ms`, backoff con jitter, `max_retries=0` con librería de retry propia): buscar con `azure-claim-check` la página vigente antes de citarla.
 
-Los ítems de IA (tamaño de prompt, tope de gasto) son práctica general; no están verificados contra Learn en este kit.
+Los ítems de IA (tamaño de prompt, tope de gasto) son práctica general; no están verificados contra Learn en este plugin.

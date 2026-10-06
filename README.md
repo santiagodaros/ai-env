@@ -1,19 +1,62 @@
 # ai-env
 
-Marketplace de plugins para Claude Code, más un kit de proyecto con hooks y CI. Contenido en español rioplatense.
+Marketplace de plugins para Claude Code: hooks de protección, un workflow por features con arquitectura hexagonal, revisión de aplicaciones, operación de Azure y rediseño de front. Todo se instala como plugin; no hay archivos que copiar a mano. Contenido en español rioplatense.
 
-## Instalar los plugins
+## Instalar
 
 ```powershell
 claude plugin marketplace add santiagodaros/ai-env
-claude plugin install front-studio@ai-env
+claude plugin install guard@ai-env
+claude plugin install dev-flow@ai-env
 claude plugin install app-review@ai-env
 claude plugin install cloud-ops@ai-env
+claude plugin install front-studio@ai-env
 ```
 
-O con el script: `bootstrap\bootstrap.ps1 -Repo santiagodaros/ai-env` (Windows) / `bootstrap/bootstrap.sh santiagodaros/ai-env` (macOS, Linux).
+O con el script: `bootstrap\bootstrap.ps1` (Windows) / `bootstrap/bootstrap.sh` (macOS, Linux). Instalá solo los que uses: cada plugin es independiente.
 
-Actualizar: `/plugin marketplace update ai-env`. Los plugins no declaran `version`, así que cada commit cuenta como versión nueva. Las skills quedan con prefijo de plugin (por ejemplo `front-studio:redesign`).
+Después, una vez por máquina, dentro de Claude Code:
+
+```
+/dev-flow:setup     # statusline del límite de 5 h y actualización automática del marketplace
+/dev-flow:doctor    # diagnóstico: qué está activo y qué falta
+```
+
+Y una vez por repo: `/dev-flow:project-init`. Con `--settings` deja el marketplace y los plugins declarados en `.claude/settings.json`, así cargan solos para quien clone el repo y confíe en la carpeta.
+
+**Actualizaciones.** Los plugins no declaran `version`: cada commit es una versión. Claude Code trae la actualización automática apagada para marketplaces de terceros; `/dev-flow:setup` la enciende. A mano: `claude plugin marketplace update ai-env`.
+
+| Plugin | Qué trae | Costo fijo de contexto |
+|---|---|---|
+| `guard` | 3 hooks de protección. Sirve en cualquier repo, sin configuración | 0 tokens |
+| `dev-flow` | 12 skills manuales y 4 hooks: arquitectura antes del código, features, compuertas, cierre, presupuesto | hasta ~1.500 tokens |
+| `app-review` | 3 skills y 2 subagentes de revisión | ~570 tokens |
+| `cloud-ops` | 5 skills de Azure y el servidor MCP de Microsoft Learn | ~660 tokens |
+| `front-studio` | 8 skills de rediseño y re-auditoría | ~690 tokens |
+
+Los costos son la estimación de `claude plugin details <plugin>@ai-env` (descripciones de skills; los hooks no consumen contexto).
+
+## Qué protege `guard`
+
+| Hook | Evento | Qué hace |
+|---|---|---|
+| `protect-files` | Edit, Write | Bloquea escrituras en `.git/`, lockfiles y `.env` (salvo `.env.example`), y contenido con apariencia de secreto (claves de Storage, client secrets, claves privadas, JWT). Pide confirmación para tocar `.claude/settings.json` |
+| `secret-read` | Read | Bloquea leer `.env`, `secrets/`, claves y certificados privados. Reemplaza las reglas `permissions.deny`, que un plugin no puede distribuir |
+| `bash-guard` | Bash, PowerShell | Bloquea leer `.env` por consola, el borrado recursivo de la raíz, el home o una unidad, y `git push --force` a main. Pide confirmación para borrar recursos de Azure (`az ... delete`, `Remove-Az*`), cambios de permisos o credenciales, `terraform destroy` y `apply -auto-approve`, `git reset --hard`, `--no-verify`, `kubectl delete`, y descargar y ejecutar scripts |
+
+Son heurísticas sobre el texto: una red de contención, no un reemplazo de permisos mínimos, locks en los recursos ni gitleaks en CI.
+
+### Interruptores
+
+Variables de entorno del proceso de Claude Code (no de los comandos que corre Claude):
+
+| Variable | Efecto |
+|---|---|
+| `AI_ENV_HOOKS=off` | Apaga todos los hooks de ai-env |
+| `AI_ENV_HOOKS_SKIP=bash-guard,stop-verify` | Apaga los hooks nombrados |
+| `AI_ENV_GUARD_STRICT=1` | Lo que pide confirmación pasa a bloquearse |
+
+`/dev-flow:doctor` avisa si hay alguno activo.
 
 ## Sesiones por feature sin abusar
 
@@ -32,11 +75,47 @@ Lanzar en segundo plano (`launch.cjs --launch`) es opcional y se rechaza si:
 | Menos del 10 % libre del límite de 5 h, o la feature no entra según la estimación | rechazada | reserva nunca menor a 5 % |
 | No se puede contar las sesiones activas | rechazada | rechazada |
 
-Podés bajar los topes en `.claude/feature-flow.json`; no subirlos por encima del techo. Cada lanzamiento pide confirmación en pantalla. Con solo el plugin `app-review` (sin el kit) no están el hook `session-guard` ni la relectura automática: las barreras de `launch.cjs` siguen, pero el bloqueo de `claude --bg` directo no.
+Podés bajar los topes en `.claude/feature-flow.json`; no subirlos por encima del techo. Cada lanzamiento pide confirmación en pantalla. El hook `session-guard` viene en el mismo plugin: bloquea `claude --bg`, `-w` y `-p` directos, y el lanzador no sirve de salvoconducto para encadenar otro `claude` en la misma línea.
 
 ## Qué hace cada skill
 
-Convención: **manual** = solo se activa si la invocás vos (`/plugin:skill`); **auto** = Claude la carga solo cuando el pedido coincide con su descripción.
+Convención: **manual** = solo se activa si la invocás vos (`/plugin:skill`); **auto** = Claude la carga sola cuando el pedido coincide con su descripción.
+
+### `dev-flow` — del repo vacío al PR
+
+Todas las skills son manuales. Orden típico: `project-init` → `arch-first` → `feature-flow` o `feature-run` → `feature-close` → `pr-prep`.
+
+| Skill | Activación | Qué hace |
+|---|---|---|
+| `project-init` | manual | Repo nuevo o clonado: detecta stack y scripts reales, completa `CLAUDE.md`, `docs/STATE.md` y `.gitignore` sin pisar nada, con `--settings` deja declarados el marketplace y los plugins en `.claude/settings.json` (cargan solos para quien clone el repo), con `--ci` agrega los workflows, y encadena `arch-first` |
+| `arch-first` | manual | Antes de escribir código de un programa, página o automatización: arquitectura hexagonal con puertos y seguridad por capa en `architecture.json` y `ARCHITECTURE.md`, vista previa (diagrama, carpetas, reglas), **aprobación humana con sello por hash** y recién después se habilita el código. El hook `arch-guard` bloquea código sin aprobar, fuera de las capas o que rompa la regla de dependencia; `arch-check.cjs` lo verifica en feature-close y en el CI (TypeScript/JavaScript, Python y PowerShell) |
+| `feature-flow` | manual | Parte un trabajo grande en hasta 3 features, crea `docs/features/<slug>/` con `SPEC.md`, `STATE.md` y `HANDOFF.md`, y te da el comando para retomarla en una sesión nueva. Abrir sesiones en segundo plano es opcional y tiene límites duros (ver abajo) |
+| `feature-run` | manual | Orquesta una feature de punta a punta: presupuesto, SPEC aprobado, implementación, pruebas, cierre con documentos y `PR.md`. `stage.cjs` dice en qué etapa está mirando archivos y git, así que se puede reanudar. Paradas: SPEC sin aprobar, sin presupuesto, tests rojos tras 2 intentos, push o PR sin tu sí |
+| `spec-interview` | manual | Te entrevista para definir una feature grande y escribe un `SPEC.md` autocontenido antes de implementar |
+| `budget-plan` | manual | Dice cuánto queda del límite de 5 h, estima cuánto necesita una feature (percentil 75 de las ya medidas) y propone ejecutar ahora, justo o dividida en rebanadas que entren en lo disponible. Mide solo: `rehydrate` inicia y `feature-close` cierra la medición |
+| `security-diff` | manual | Revisión de seguridad solo del diff: reglas deterministas sobre las líneas agregadas (secretos, TLS desactivado, ejecución dinámica, inyección, XSS, CORS abierto, permisos amplios, GUIDs, dependencias nuevas). Alta bloquea el cierre; un riesgo aceptado lo declara el usuario en el STATE |
+| `adr` | manual | Una página por decisión en `docs/decisions/` con índice automático; las decisiones marcadas `[ADR]` en el STATE se registran al cerrar la feature |
+| `feature-close` | manual | Cierra una feature en una corrida: corre typecheck, lint y test y una compuerta de pruebas (rechaza código cambiado sin ningún archivo de prueba, salvo `Sin pruebas: <motivo>` declarado en el STATE); escribe la entrada de `docs/CHANGELOG.md` y el diseño final de punta a punta en `docs/design/<slug>.md` desde los hechos del diff (`collect.cjs`); los valida (`verify.cjs`: secciones completas, rutas citadas que existan, sin GUIDs ni términos privados); arma `PR.md` (título y cuerpo desde lo verificado), marca el STATE como cerrado y commitea solo docs. No cierra si algo falla |
+| `pr-prep` | manual | Corre las verificaciones, revisa el diff contra las invariantes del proyecto y redacta la descripción del PR |
+| `setup` | manual | Una vez por máquina: instala la statusline (única fuente del límite de 5 h) y activa la actualización automática. Simula antes de escribir, deja copia `.bak` y no reemplaza una statusline ajena sin `--force-statusline` |
+| `doctor` | manual | Diagnóstico de solo lectura: herramientas, plugins activos, auto-update, statusline, foto de consumo, interruptores, scripts de verificación y estado de la arquitectura |
+
+| Hook | Evento | Qué hace |
+|---|---|---|
+| `arch-guard` | Edit, Write | En carpetas con `architecture.json`: no deja escribir código sin arquitectura aprobada por la persona, ni fuera de las capas, ni con imports que rompan la regla de dependencia, ni sellar la aprobación por su cuenta |
+| `session-guard` | Bash, PowerShell | Bloquea que Claude abra sesiones por su cuenta y que corra `approve.cjs`; lanzar con `feature-flow` pide confirmación humana |
+| `rehydrate` | SessionStart | Tras `/compact` reinyecta `docs/STATE.md`; al arrancar en la rama o worktree de una feature inyecta su `HANDOFF.md` y `STATE.md` e inicia la medición de consumo |
+| `stop-verify` | Stop | Si hubo cambios de código, corre `typecheck` y `lint` antes de dar el turno por terminado. Se apaga por repo con `{"stopVerify": false}` en `.claude/dev-flow.json` |
+
+### `app-review` — revisión de código
+
+| Pieza | Tipo | Activación | Qué hace |
+|---|---|---|---|
+| `app-architecture-review` | skill | auto | Revisa React, TypeScript y backend en tres lentes: identidad, seguridad y costo de llamadas a APIs (`references/identity.md`, `security.md`, `cost.md`). Se activa con "revisá este PR", "auditá esto" o cambios en autenticación, permisos o secretos |
+| `frontend-rules` | skill | auto, solo al tocar `**/*.tsx` | Reglas de seguridad para React: variables públicas, PKCE, tokens fuera de `localStorage`, HTML sin sanitizar, autorización del lado servidor |
+| `api-call-rules` | skill | auto, solo al tocar `**/*.ts` | Reglas para llamadas a APIs de Microsoft: caché y throttling, reintentos, managed identity, autorización por cliente |
+| `reviewer` | subagente | auto | Revisor independiente en contexto limpio para cambios de alto riesgo (identidad, permisos, secretos, APIs de Microsoft). Para antes de mergear o entregar, no para cada commit |
+| `explorer` | subagente | auto | Explorador de solo lectura: rastrea dónde se usa una credencial, endpoint o permiso y devuelve solo la conclusión, para no llenar tu contexto |
 
 ### `front-studio` — rediseño de front y re-auditoría de seguridad
 
@@ -55,24 +134,6 @@ El estado vive en archivos (`design/`, `docs/security/`), no en el chat: podés 
 
 Orden típico: `redesign` → `brand-intake` → `product-map` → `design-direction` → `live-preview` → `ui-review` → `react-port`. `security-reaudit` es independiente. Ejemplo de los documentos que produce cada etapa: `plugins/front-studio/examples/portal-muestra/` (marca ficticia; es una muestra del formato, no un estándar de calidad visual).
 
-### `app-review` — revisión de código y de PRs
-
-| Pieza | Tipo | Activación | Qué hace |
-|---|---|---|---|
-| `app-architecture-review` | skill | auto | Revisa React, TypeScript y backend en tres lentes: identidad, seguridad y costo de llamadas a APIs (`references/identity.md`, `security.md`, `cost.md`). Se activa con "revisá este PR", "auditá esto" o cambios en autenticación, permisos o secretos |
-| `pr-prep` | skill | manual | Corre las verificaciones, revisa el diff contra las invariantes del proyecto y redacta la descripción del PR |
-| `spec-interview` | skill | manual | Te entrevista para definir una feature grande y escribe un `SPEC.md` autocontenido antes de implementar |
-| `feature-flow` | skill | manual | Parte un trabajo grande en hasta 3 features, crea `docs/features/<slug>/` con `SPEC.md`, `STATE.md` y `HANDOFF.md`, y te da el comando para retomarla en una sesión nueva. Abrir sesiones en segundo plano es opcional y tiene límites duros (ver abajo) |
-| `feature-close` | skill | manual | Cierra una feature en una corrida: corre typecheck, lint y test y una compuerta de pruebas (rechaza código cambiado sin ningún archivo de prueba, salvo `Sin pruebas: <motivo>` declarado en el STATE); escribe la entrada de `docs/CHANGELOG.md` y el diseño final de punta a punta en `docs/design/<slug>.md` desde los hechos del diff (`collect.cjs`); los valida (`verify.cjs`: secciones completas, rutas citadas que existan, sin GUIDs ni términos privados); arma `PR.md` (título y cuerpo desde lo verificado), marca el STATE como cerrado y commitea solo docs. No cierra si algo falla |
-| `feature-run` | skill | manual | Orquesta una feature de punta a punta: presupuesto, SPEC aprobado, implementación, pruebas, cierre con documentos y `PR.md`. `stage.cjs` dice en qué etapa está mirando archivos y git, así que se puede reanudar. Paradas: SPEC sin aprobar, sin presupuesto, tests rojos tras 2 intentos, push o PR sin tu sí |
-| `budget-plan` | skill | manual | Dice cuánto queda del límite de 5 h, estima cuánto necesita una feature (percentil 75 de las ya medidas) y propone ejecutar ahora, justo o dividida en rebanadas que entren en lo disponible. Mide solo: `rehydrate` inicia y `feature-close` cierra la medición |
-| `arch-first` | skill | manual | Antes de escribir código de un programa, página o automatización: arquitectura hexagonal con puertos y seguridad por capa en `architecture.json` y `ARCHITECTURE.md`, vista previa (diagrama, carpetas, reglas), **aprobación humana con sello por hash** y recién después se habilita el código. El hook `arch-guard` bloquea código sin aprobar, fuera de las capas o que rompa la regla de dependencia; `arch-check.cjs` lo verifica en feature-close y en el CI (TypeScript/JavaScript, Python y PowerShell) |
-| `security-diff` | skill | manual | Revisión de seguridad solo del diff: reglas deterministas sobre las líneas agregadas (secretos, TLS desactivado, ejecución dinámica, inyección, XSS, CORS abierto, permisos amplios, GUIDs, dependencias nuevas). Alta bloquea el cierre; un riesgo aceptado lo declara el usuario en el STATE |
-| `adr` | skill | manual | Una página por decisión en `docs/decisions/` con índice automático; las decisiones marcadas `[ADR]` en el STATE se registran al cerrar la feature |
-| `project-init` | skill | manual | Repo nuevo o clonado: detecta stack y scripts reales, completa `CLAUDE.md`, `docs/STATE.md` y `.gitignore` sin pisar nada, verifica el kit y encadena `arch-first` |
-| `reviewer` | subagente | auto | Revisor independiente en contexto limpio para cambios de alto riesgo (identidad, permisos, secretos, APIs de Microsoft). Para antes de mergear o entregar, no para cada commit |
-| `explorer` | subagente | auto | Explorador de solo lectura: rastrea dónde se usa una credencial, endpoint o permiso y devuelve solo la conclusión, para no llenar tu contexto |
-
 ### `cloud-ops` — trabajo en Azure y entregables
 
 | Skill | Activación | Qué hace |
@@ -85,40 +146,30 @@ Orden típico: `redesign` → `brand-intake` → `product-map` → `design-direc
 
 > Las skills de `cloud-ops` y `app-review` fueron escritas con un flujo de trabajo concreto (Azure, React + TypeScript, español). Leelas y adaptá las reglas a tu contexto antes de confiar en ellas.
 
-## Kit de proyecto (hooks, permisos, CI)
+`cloud-ops` declara el servidor MCP remoto de Microsoft Learn (`https://learn.microsoft.com/api/mcp`), que usa `azure-claim-check`.
 
-Los hooks necesitan rutas del proyecto, por eso no van como plugin: `kits/hub-ai-kit` se instala con script.
+## Lo que un plugin no puede instalar
 
-| Pieza | Qué hace |
-|---|---|
-| Hook `protect-files` | Bloquea ediciones a `.git/`, lockfiles, `.env` (salvo `.env.example`) y contenido que parece un secreto |
-| Hook `stop-verify` | Antes de dar el trabajo por terminado corre typecheck y lint si hubo cambios, incluso en carpetas nuevas |
-| Hook `rehydrate` | Tras `/compact` reinyecta `docs/STATE.md`; al arrancar una sesión en la rama o worktree de una feature, inyecta su `HANDOFF.md` y `STATE.md` |
-| Statusline | Además de mostrar 5 h (con tiempo al reinicio) y 7 d, guarda `~/.claude/.budget/latest.json`: es el único lugar donde Claude Code entrega el consumo del límite, y de ahí lo leen `budget-plan` y `launch.cjs` |
-| Hook `arch-guard` | Con `architecture.json` en el proyecto: no deja escribir código sin arquitectura aprobada por la persona, ni fuera de las capas, ni con imports que rompan la regla de dependencia, ni sellar la aprobación por su cuenta |
-| Hook `session-guard` | Bloquea que Claude abra sesiones por su cuenta (`claude --bg`, `-w`, `-p`) y exige confirmación humana para lanzar con `feature-flow` |
-| `deny` de lectura | Claude no lee `.env`, `.env.*` ni `secrets/` |
-| `.github/` | CodeQL, gitleaks, dependency review y Dependabot; opcional revisión de PR con Claude |
-| `rules/`, `CLAUDE.md` | Invariantes y reglas por capa (frontend, llamadas a API); las reglas solo cargan al tocar archivos que coinciden |
-| `statusline.cjs` | Contexto usado, límite de 5 h y costo, siempre a la vista |
+| Pieza | Por qué | Cómo se resuelve acá |
+|---|---|---|
+| Statusline | El `settings.json` de un plugin solo admite `agent` y `subagentStatusLine` | `/dev-flow:setup` la instala una vez; `rehydrate` la mantiene al día |
+| Permisos (`deny`) | No se distribuyen por plugin | Los hooks `secret-read` y `bash-guard` |
+| `CLAUDE.md` y `rules/` | Un `CLAUDE.md` en la raíz del plugin no se carga | Las reglas son skills con `paths`; `project-init` completa el `CLAUDE.md` del repo. Ejemplos en `docs/examples/` |
 
-```powershell
-node kits\hub-ai-kit\install.js --repo "C:\ruta\a\tu-repo" --dry-run
-node kits\hub-ai-kit\install.js --repo "C:\ruta\a\tu-repo"
-node kits\hub-ai-kit\smoke-test.js --repo "C:\ruta\a\tu-repo"
-```
+## Verificación
 
-Detalle en `kits/hub-ai-kit/README.md`. Verificado en Windows con Claude Code 2.1.x (hooks en `.cjs`, forma shell).
+- `node tests/smoke-test.js`: 168 pruebas de hooks, topes, compuertas, presupuesto, setup y estructura de los plugins. Corre en Linux, Windows y macOS en cada push.
+- Evals de disparo (¿la skill se activa cuando debe y no cuando no?): `claude plugin eval plugins/cloud-ops --model haiku --no-publish`. Consumen cuota de tu cuenta, por eso no corren en CI.
+- `docs/PRUEBA-REAL.md`: checklist para confirmar en tu máquina que los hooks bloquean en una sesión real.
 
 ## Mantener el repo (contribuir)
 
-- `kits/hub-ai-kit` es la fuente de skills/agentes de `app-review` y `cloud-ops`; `plugins/front-studio` es fuente propia.
-- Después de editar el kit: `node scripts/sync-plugins.cjs` y commitear `plugins/`. El CI falla si no coinciden.
-- CI en Linux, Windows y macOS: `check.cjs` y la prueba de humo del kit en cada push.
-- Chequeos: `node scripts/check.cjs`. Detecta GUIDs, emails, secretos, frontmatter roto y errores de sintaxis.
+- `plugins/` es la única fuente. Para probar un cambio sin instalar: `claude --plugin-dir plugins/guard --plugin-dir plugins/dev-flow`.
+- Los hooks no tienen dependencias y no usan la red. Mantenelos así: un plugin con hooks ejecuta código en la máquina de quien lo instala (ver `SECURITY.md`).
+- Chequeos: `node scripts/check.cjs` (GUIDs, emails, secretos, frontmatter, sintaxis) y `claude plugin validate .`.
 - Activar el hook local: `git config core.hooksPath .githooks`.
 - Repo público: copiá `.private-terms.example` a `.private-terms` (ignorado por git) y listá nombres de clientes, dominios internos e IDs de tenant. `check.cjs` bloquea el commit si aparece alguno.
-- Validar el marketplace: `claude plugin validate .`
+- Cambios visibles para quien usa los plugins: una línea en `CHANGELOG.md`.
 
 ## Qué NO va en este repo
 

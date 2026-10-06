@@ -1,7 +1,7 @@
 ---
 name: app-architecture-review
 description: >-
-  Revisa código de aplicación (React, TypeScript, backend) en tres lentes: identidad, seguridad y costos de API. Usar cuando el usuario pida revisar un PR, un módulo o un cambio, "auditá esto", "revisá seguridad/identidad/costos", o antes de mergear cambios que toquen autenticación, permisos, secretos o llamadas a APIs de Microsoft.
+  Usar siempre que haya que revisar, auditar u opinar sobre código de aplicación (un PR, un módulo, un cambio) antes de mergear o entregar, y en especial si toca autenticación, tokens, permisos, secretos o llamadas a APIs de Microsoft (Graph, ARM, Cost Management, Partner Center). Invocarla antes de dar un veredicto propio, aunque el problema parezca evidente. Tres lentes: identidad, seguridad y costo de API.
 ---
 
 # app-architecture-review

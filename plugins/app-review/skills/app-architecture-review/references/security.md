@@ -31,4 +31,4 @@ Cada ítem se evalúa PASA / FALLA / N/A con evidencia `archivo:línea`. Lo que 
 
 - [ ] Las dependencias nuevas son necesarias, mantenidas y están cubiertas por Dependabot.
 
-Estos ítems son práctica general de seguridad de aplicaciones; no están verificados contra Microsoft Learn en este kit.
+Estos ítems son práctica general de seguridad de aplicaciones; no están verificados contra Microsoft Learn en este plugin.

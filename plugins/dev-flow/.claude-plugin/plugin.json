@@ -1,0 +1,7 @@
+{
+  "name": "dev-flow",
+  "description": "Workflow de desarrollo por features: arquitectura hexagonal aprobada antes del código, una sesión por feature con topes, compuertas de pruebas y seguridad, cierre documentado y presupuesto del límite de 5 h.",
+  "license": "MIT",
+  "author": { "name": "ai-env contributors" },
+  "keywords": ["workflow", "arquitectura", "hexagonal", "features", "adr"]
+}

@@ -1,8 +1,6 @@
 {
   "name": "app-review",
-  "description": "Revisión de arquitectura (seguridad, identidad, costo), preparación de PR, entrevista de spec y subagentes reviewer/explorer.",
+  "description": "Revisión de código de aplicación en tres lentes (identidad, seguridad, costo de APIs), reglas para React y llamadas a APIs, y subagentes reviewer y explorer.",
   "license": "MIT",
-  "author": {
-    "name": "ai-env contributors"
-  }
+  "author": { "name": "ai-env contributors" }
 }

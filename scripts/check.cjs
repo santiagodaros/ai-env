@@ -18,7 +18,7 @@ if (!terms.length) console.warn('AVISO: sin .private-terms ni PRIVATE_TERMS; sol
 const GUID = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/i;
 const EMAIL = /[\w.+-]+@(?!example\.|users\.noreply\.github\.com)[\w-]+\.[a-z]{2,}/i;
 // Casos de prueba del hook protect-files: contienen un secreto falso a propósito.
-const SECRET_ALLOW = ['kits/hub-ai-kit/smoke-test.js'];
+const SECRET_ALLOW = ['tests/smoke-test.js'];
 const SECRET = /(AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{30,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|client_secret\s*[:=]\s*['"][^'"]{8,})/;
 for (const f of files) {
   if (/\.(zip|png|jpg|ico|woff2?)$/i.test(f)) continue;
