@@ -26,3 +26,41 @@ jobs:
           npm install -g @anthropic-ai/claude-code
           claude plugin validate .
           for p in plugins/*; do claude plugin validate "$p"; done
+  installer:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      AI_ENV_SOURCE: ${{ github.workspace }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm install -g @anthropic-ai/claude-code
+      - name: Instalador (macOS / Linux), dos veces para probar que es repetible
+        if: runner.os != 'Windows'
+        run: |
+          sh install.sh
+          sh install.sh
+      - name: Instalador (Windows PowerShell 5.1, igual que irm | iex), dos veces
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          Get-Content -Raw install.ps1 | Invoke-Expression
+          Get-Content -Raw install.ps1 | Invoke-Expression
+      - name: El resultado quedó en los settings del usuario
+        shell: bash
+        run: |
+          node -e '
+            const fs=require("fs"),os=require("os"),path=require("path");
+            const s=JSON.parse(fs.readFileSync(path.join(os.homedir(),".claude","settings.json"),"utf8"));
+            const want=["guard","dev-flow","app-review","cloud-ops","front-studio"].map(p=>p+"@ai-env");
+            const miss=want.filter(p=>s.enabledPlugins[p]!==true);
+            if(miss.length) throw new Error("plugins sin habilitar: "+miss);
+            if(s.extraKnownMarketplaces["ai-env"].autoUpdate!==true) throw new Error("autoUpdate apagado");
+            if(!s.statusLine.command.includes("ai-env/statusline.cjs")) throw new Error("statusline sin configurar: "+JSON.stringify(s.statusLine));
+            if(!fs.existsSync(path.join(os.homedir(),".claude","ai-env","statusline.cjs"))) throw new Error("falta statusline.cjs");
+            console.log("OK", JSON.stringify(s.statusLine));
+          '

@@ -590,6 +590,19 @@ for (const a of ['reviewer', 'explorer']) check(`app-review: subagente ${a}`, fm
 }
 fs.rmSync(emptyProj, { recursive: true, force: true });
 
+// --- Instaladores de un comando
+{
+  const root = path.join(__dirname, '..');
+  for (const f of ['install.sh', 'install.ps1']) check(`instalador: existe ${f}`, fs.existsSync(path.join(root, f)));
+  const ps = fs.existsSync(path.join(root, 'install.ps1')) ? fs.readFileSync(path.join(root, 'install.ps1')) : Buffer.alloc(0);
+  // Windows PowerShell 5.1 lee los .ps1 sin BOM como ANSI: un byte no ASCII puede terminar siendo una comilla y romper el script.
+  check('instalador: install.ps1 es ASCII puro', ps.length > 0 && ps.every((b) => b < 128));
+  const sh = fs.existsSync(path.join(root, 'install.sh')) ? fs.readFileSync(path.join(root, 'install.sh'), 'utf8') : '';
+  check('instalador: install.sh no tiene finales de línea de Windows', sh.length > 0 && !sh.includes('\r'));
+  const names = fs.readdirSync(P).filter((d) => fs.existsSync(path.join(P, d, '.claude-plugin', 'plugin.json')));
+  check('instalador: ambos instalan por defecto todos los plugins que existen', names.every((n) => sh.includes(n) && ps.toString().includes(`'${n}'`)));
+}
+
 // --- Reporte
 const w = Math.max(...rows.map((r) => r.name.length));
 for (const r of rows) console.log(`${r.res.padEnd(6)} ${r.name.padEnd(w)}  ${r.detail}`);

@@ -4,18 +4,37 @@ Marketplace de plugins para Claude Code: hooks de protección, un workflow por f
 
 ## Instalar
 
+Un comando. Verifica requisitos (Node 18+, git, Claude Code), agrega el marketplace, instala los plugins, configura la statusline y la actualización automática, y termina con un diagnóstico.
+
 ```powershell
-claude plugin marketplace add santiagodaros/ai-env
-claude plugin install guard@ai-env
-claude plugin install dev-flow@ai-env
-claude plugin install app-review@ai-env
-claude plugin install cloud-ops@ai-env
-claude plugin install front-studio@ai-env
+# Windows (PowerShell)
+irm https://raw.githubusercontent.com/santiagodaros/ai-env/main/install.ps1 | iex
 ```
 
-O con el script: `bootstrap\bootstrap.ps1` (Windows) / `bootstrap/bootstrap.sh` (macOS, Linux). Instalá solo los que uses: cada plugin es independiente.
+```bash
+# macOS / Linux
+curl -fsSL https://raw.githubusercontent.com/santiagodaros/ai-env/main/install.sh | sh
+```
 
-Después, una vez por máquina, dentro de Claude Code:
+Se puede volver a correr: actualiza y repara en vez de duplicar. Lo único que escribe fuera de Claude Code es `~/.claude/ai-env/statusline.cjs` y dos claves de `~/.claude/settings.json` (deja copia `.bak`, y no reemplaza una statusline que ya tengas).
+
+Si preferís leerlo antes de ejecutarlo, que es lo razonable con cualquier instalador: descargá `install.ps1` o `install.sh`, revisalo (unas 60 líneas) y corrélo. Opciones, por variable de entorno:
+
+| Variable | Efecto |
+|---|---|
+| `AI_ENV_PLUGINS="guard dev-flow"` | Instala solo esos plugins (por defecto, los cinco; cada uno es independiente) |
+| `AI_ENV_NO_SETUP=1` | No toca `settings.json`: sin statusline ni actualización automática |
+| `AI_ENV_FORCE_STATUSLINE=1` | Reemplaza la statusline que ya tengas |
+| `AI_ENV_SOURCE=usuario/repo` | Instala desde un fork o una carpeta local |
+
+A mano, sin instalador:
+
+```powershell
+claude plugin marketplace add santiagodaros/ai-env
+claude plugin install guard@ai-env        # y los que quieras: dev-flow, app-review, cloud-ops, front-studio
+```
+
+Si instalaste a mano, una vez por máquina dentro de Claude Code:
 
 ```
 /dev-flow:setup     # statusline del límite de 5 h y actualización automática del marketplace
@@ -24,7 +43,7 @@ Después, una vez por máquina, dentro de Claude Code:
 
 Y una vez por repo: `/dev-flow:project-init`. Con `--settings` deja el marketplace y los plugins declarados en `.claude/settings.json`, así cargan solos para quien clone el repo y confíe en la carpeta.
 
-**Actualizaciones.** Los plugins no declaran `version`: cada commit es una versión. Claude Code trae la actualización automática apagada para marketplaces de terceros; `/dev-flow:setup` la enciende. A mano: `claude plugin marketplace update ai-env`.
+**Actualizaciones.** Los plugins no declaran `version`: cada commit es una versión. Claude Code trae la actualización automática apagada para marketplaces de terceros; el instalador (o `/dev-flow:setup`) la enciende. A mano: `claude plugin marketplace update ai-env`.
 
 | Plugin | Qué trae | Costo fijo de contexto |
 |---|---|---|
@@ -158,7 +177,7 @@ Orden típico: `redesign` → `brand-intake` → `product-map` → `design-direc
 
 ## Verificación
 
-- `node tests/smoke-test.js`: 168 pruebas de hooks, topes, compuertas, presupuesto, setup y estructura de los plugins. Corre en Linux, Windows y macOS en cada push.
+- `node tests/smoke-test.js`: 173 pruebas de hooks, topes, compuertas, presupuesto, setup y estructura de los plugins. Corre en Linux, Windows y macOS en cada push.
 - Evals de disparo (¿la skill se activa cuando debe y no cuando no?): `claude plugin eval plugins/cloud-ops --model haiku --no-publish`. Consumen cuota de tu cuenta, por eso no corren en CI.
 - `docs/PRUEBA-REAL.md`: checklist para confirmar en tu máquina que los hooks bloquean en una sesión real.
 

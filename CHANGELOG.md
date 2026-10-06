@@ -2,6 +2,10 @@
 
 Los plugins no declaran `version`: cada commit es una versión. Acá va lo que cambia para quien los usa.
 
+## 2026-10-05 — Instalador de un comando
+
+- `install.ps1` e `install.sh` en la raíz: requisitos, marketplace, plugins, statusline, actualización automática y diagnóstico en una corrida. Reemplazan a `bootstrap/`. Se pueden volver a correr para actualizar.
+
 ## 2026-10-05 — Todo como plugins
 
 Cambio incompatible para quien había instalado el kit con `install.js`.
@@ -20,4 +24,4 @@ Cambio incompatible para quien había instalado el kit con `install.js`.
 
 1. En cada repo donde corriste `install.js`: borrá `.claude/hooks/`, `.claude/skills/`, `.claude/agents/`, `.claude/rules/` y el bloque `hooks` de `.claude/settings.json`. Si quedan, los hooks corren dos veces.
 2. En `~/.claude/`: borrá las cinco skills personales (`azure-claim-check`, `azure-inventory-kql`, `client-deliverables`, `context-ledger`, `deliverable-review`) y `statusline.cjs`.
-3. Instalá los plugins y corré `/dev-flow:setup` y `/dev-flow:doctor`.
+3. Corré el instalador (ver README).

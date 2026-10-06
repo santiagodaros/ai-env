@@ -25,12 +25,14 @@ Remove-Item "$HOME\.claude\statusline.cjs" -ErrorAction SilentlyContinue
 
 ```powershell
 claude --version                         # 2.1.290 o superior
-claude plugin marketplace add santiagodaros/ai-env
-'guard','dev-flow','app-review','cloud-ops','front-studio' | ForEach-Object { claude plugin install "$_@ai-env" }
-claude plugin list                       # esperado: los 5 en "enabled"
+irm https://raw.githubusercontent.com/santiagodaros/ai-env/main/install.ps1 | iex
 ```
 
-- [ ] los 5 plugins quedan habilitados
+Esperado: termina con el diagnóstico sin ninguna `FALLA`, los 5 plugins en `OK`, "actualización automática: activa" y "statusline configurada".
+
+- [ ] el instalador termina sin errores
+- [ ] existe `$HOME\.claude\settings.json.bak` si ya tenías settings
+- [ ] volver a correrlo dice "Nada que cambiar" en la parte de statusline
 
 ## 2. Repo descartable
 
@@ -43,17 +45,9 @@ Set-Content .env "TOKEN=no-deberia-verse"
 claude
 ```
 
-Dentro de Claude Code:
+Dentro de Claude Code: `/dev-flow:doctor`.
 
-```
-/dev-flow:setup
-/dev-flow:doctor
-```
-
-Esperado: `setup` muestra qué haría, pide tu visto bueno y con `--apply` instala la statusline y activa la actualización automática. Reiniciá Claude Code. `doctor` no debe mostrar ninguna `FALLA`.
-
-- [ ] `setup` simula antes de escribir y deja `settings.json.bak`
-- [ ] tras reiniciar, la barra muestra `5h N% (reinicia en…)`
+- [ ] la barra muestra `5h N% (reinicia en…)` tras la primera respuesta
 - [ ] existe `$HOME\.claude\.budget\latest.json`
 - [ ] `doctor` sin `FALLA`
 
