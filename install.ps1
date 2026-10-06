@@ -11,8 +11,8 @@ $source = if ($env:AI_ENV_SOURCE) { $env:AI_ENV_SOURCE } else { 'santiagodaros/a
 $plugins = if ($env:AI_ENV_PLUGINS) { $env:AI_ENV_PLUGINS -split '[ ,]+' | Where-Object { $_ } } else { 'guard', 'dev-flow', 'app-review', 'cloud-ops', 'front-studio' }
 function Say($t) { Write-Host "`n== $t" }
 function Need($cmd, $hint) { if (-not (Get-Command $cmd -ErrorAction SilentlyContinue)) { throw "Falta $cmd. $hint" } }
-function Run { $old = $ErrorActionPreference; $ErrorActionPreference = 'Continue'; $out = & $args[0] @($args | Select-Object -Skip 1) 2>&1 | ForEach-Object { "$_" }; $code = $LASTEXITCODE; $ErrorActionPreference = $old; $out | ForEach-Object { Write-Host $_ }; if ($code -ne 0) { throw "Fallo ($code): $($args -join ' ') :: $($out -join ' ')" } }
-function Try-Run { $old = $ErrorActionPreference; $ErrorActionPreference = 'Continue'; try { & $args[0] @($args | Select-Object -Skip 1) 2>&1 | Out-Null } catch { } finally { $ErrorActionPreference = $old }; $global:LASTEXITCODE = 0 }
+function Run { $old = $ErrorActionPreference; $ErrorActionPreference = 'Continue'; $exe = $args[0]; $rest = @($args | Select-Object -Skip 1); $out = & $exe @rest 2>&1 | ForEach-Object { "$_" }; $code = $LASTEXITCODE; $ErrorActionPreference = $old; $out | ForEach-Object { Write-Host $_ }; if ($code -ne 0) { throw "Fallo ($code): $($args -join ' ') :: $($out -join ' ')" } }
+function Try-Run { $old = $ErrorActionPreference; $ErrorActionPreference = 'Continue'; $exe = $args[0]; $rest = @($args | Select-Object -Skip 1); try { & $exe @rest 2>&1 | Out-Null } catch { } finally { $ErrorActionPreference = $old }; $global:LASTEXITCODE = 0 }
 
 Say 'Requisitos'
 Need node 'Instala Node.js 18 o superior: https://nodejs.org'
