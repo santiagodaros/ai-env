@@ -13,6 +13,7 @@ const DF = path.join(P, 'dev-flow'), GD = path.join(P, 'guard');
 const hooks = path.join(DF, 'hooks');   // hooks de dev-flow
 const ghooks = path.join(GD, 'hooks');  // hooks de guard
 const A = path.join(DF, 'skills');
+const AR = path.join(P, 'arch'), AS = path.join(AR, 'skills'); // plugin arch: arch-first, adr y arch-guard
 
 const rows = [];
 const add = (res, name, detail = '') => rows.push({ res, name, detail });
@@ -59,7 +60,7 @@ const bashCandidates = process.platform === 'win32'
 const bash = bashCandidates.find((b) => b === 'bash' || fs.existsSync(b));
 if (!bash) add('AVISO', 'no se encontró bash: no se probaron los comandos de hooks end-to-end');
 const emptyProj = fs.mkdtempSync(path.join(os.tmpdir(), 'aienv-empty-'));
-for (const plug of [GD, DF, path.join(P, 'cloud-ops')]) {
+for (const plug of [GD, AR, DF, path.join(P, 'cloud-ops')]) {
   const name = path.basename(plug);
   let hj = null;
   try { hj = JSON.parse(fs.readFileSync(path.join(plug, 'hooks', 'hooks.json'), 'utf8')); check(`${name}: hooks.json es JSON válido con la clave "hooks"`, !!hj.hooks); }
@@ -403,12 +404,12 @@ if (fs.existsSync(slPath) && fs.existsSync(bpPath) && git.status === 0) {
 } else add('AVISO', 'presupuesto no probado', 'falta statusline, budget.cjs o git');
 
 // --- arch-first, adr, security-diff, project-init
-const needAll = ['arch-first', 'adr', 'security-diff', 'project-init'].every((s) => fs.existsSync(path.join(A, s)));
+const needAll = ['arch-first', 'adr'].every((s) => fs.existsSync(path.join(AS, s))) && ['security-diff', 'project-init'].every((s) => fs.existsSync(path.join(A, s)));
 if (needAll && git.status === 0) {
   const mkproj = () => fs.mkdtempSync(path.join(os.tmpdir(), 'kit-ar-')); // el proyecto no tiene copia de nada: todo corre desde el plugin
   const N = (p, script, argv = [], env = {}) => { const r = spawnSync(process.execPath, [script, ...argv], { cwd: p, encoding: 'utf8', env: { ...process.env, ...env } }); lastOut = `${r.stdout || ''}${r.stderr || ''}`; return { code: r.status, out: lastOut }; };
-  const sk = (p, s, f) => path.join(A, s, 'scripts', f);
-  const guard = (p, tool_input) => { const r = runNode(path.join(hooks, 'arch-guard.cjs'), JSON.stringify({ tool_name: 'Write', tool_input, cwd: p }), { CLAUDE_PROJECT_DIR: p }); return r.code; };
+  const sk = (p, s, f) => path.join(fs.existsSync(path.join(AS, s)) ? AS : A, s, 'scripts', f);
+  const guard = (p, tool_input) => { const r = runNode(path.join(AR, 'hooks', 'arch-guard.cjs'), JSON.stringify({ tool_name: 'Write', tool_input, cwd: p }), { CLAUDE_PROJECT_DIR: p }); return r.code; };
   const proj = mkproj();
   let r = N(proj, sk(proj, 'arch-first', 'scaffold.cjs'), ['--type', 'api', '--lang', 'ts', '--name', 'demo']);
   const hasCode = (function walk(d) { return fs.readdirSync(d, { withFileTypes: true }).some((e) => e.name === 'node_modules' || e.name === '.claude' ? false : e.isDirectory() ? walk(path.join(d, e.name)) : /\.(ts|js|py|ps1)$/.test(e.name)); })(proj);
@@ -442,8 +443,9 @@ if (needAll && git.status === 0) {
   check('arch-guard: scripts/ queda permitido', G('scripts/tool.ts', 'export const s = 1;\n') === 0);
   check('arch-guard: revisa cada edición de un MultiEdit', guard(proj, { file_path: 'src/domain/m.ts', edits: [{ old_string: 'a', new_string: 'export const m = 1;' }, { old_string: 'b', new_string: "import axios from 'axios';" }] }) === 2);
   check('arch-guard: un repo sin architecture.json no se toca', guard(emptyProj, { file_path: 'src/a.ts', content: 'export const a = 1;' }) === 0);
-  const sg2 = runNode(path.join(hooks, 'session-guard.cjs'), JSON.stringify({ tool_name: 'Bash', tool_input: { command: 'node "C:/Users/u/.claude/plugins/cache/ai-env/dev-flow/abc123/skills/arch-first/scripts/approve.cjs"' } }));
-  check('session-guard: Claude no puede correr approve.cjs', sg2.code === 2, `exit=${sg2.code}`);
+  const ag = (command) => runNode(path.join(AR, 'hooks', 'arch-guard.cjs'), JSON.stringify({ tool_name: 'Bash', tool_input: { command } }), { CLAUDE_PROJECT_DIR: proj });
+  check('arch-guard: Claude no puede correr approve.cjs', ag('node "C:/Users/u/.claude/plugins/cache/ai-env/arch/1.0.0/skills/arch-first/scripts/approve.cjs"').code === 2);
+  check('arch-guard: otros comandos de consola no le interesan', ag('node "C:/x/skills/arch-first/scripts/arch-check.cjs"').code === 0 && ag('git status').code === 0);
   // arch-check sobre archivos reales
   fs.mkdirSync(path.join(proj, 'src', 'domain'), { recursive: true }); fs.mkdirSync(path.join(proj, 'src', 'adapters', 'outbound'), { recursive: true });
   fs.writeFileSync(path.join(proj, 'src', 'domain', 'a.ts'), 'export const a = 1;\n');
@@ -455,7 +457,7 @@ if (needAll && git.status === 0) {
   cfgj.forbiddenInCore.push('lodash'); fs.writeFileSync(cj, JSON.stringify(cfgj, null, 2));
   check('arch-guard: cambiar architecture.json invalida la aprobación', G('src/domain/c.ts', 'export const c = 1;\n') === 2);
   // python y PowerShell
-  const L = require(path.join(A, 'arch-first', 'scripts', 'archlib.cjs'));
+  const L = require(path.join(AS, 'arch-first', 'scripts', 'archlib.cjs'));
   const pyCfg = { dir: '/x', layers: { domain: { paths: ['src/app/domain'], mayImport: ['domain'] }, application: { paths: ['src/app/application'], mayImport: ['domain', 'application'] }, outbound: { paths: ['src/app/adapters/outbound'], mayImport: ['application', 'domain', 'outbound'] } }, coreLayers: ['domain', 'application'], forbiddenInCore: ['requests'], envOnlyIn: ['outbound'], aliases: {}, allowOutside: ['tests/'] };
   for (const l of Object.values(pyCfg.layers)) l.mayImport = l.mayImport.slice();
   check('arch-check: Python, dominio importando un adaptador', L.checkText(pyCfg, 'src/app/domain/r.py', 'from app.adapters.outbound.repo import Repo\n').length === 1);
@@ -513,8 +515,8 @@ if (needAll && git.status === 0) {
   fs.mkdirSync(path.join(ip, '.claude')); fs.writeFileSync(path.join(ip, '.claude', 'settings.json'), JSON.stringify({ permissions: { allow: ['Bash(npm test)'] }, enabledPlugins: { 'guard@ai-env': false } }));
   N(ip, IN, ['--apply', '--settings', '--ci']);
   const pset = JSON.parse(fs.readFileSync(path.join(ip, '.claude', 'settings.json'), 'utf8'));
-  check('project-init: --settings declara marketplace y plugins sin pisar lo que había', pset.extraKnownMarketplaces['ai-env'].source.repo.endsWith('/ai-env') && pset.extraKnownMarketplaces['ai-env'].autoUpdate === true && pset.enabledPlugins['dev-flow@ai-env'] === true && pset.enabledPlugins['guard@ai-env'] === false && pset.permissions.allow.length === 1);
-  check('project-init: --ci agrega los workflows y el de arquitectura trae el verificador del plugin', fs.existsSync(path.join(ip, '.github', 'workflows', 'security.yml')) && fs.readFileSync(path.join(ip, '.github', 'workflows', 'architecture.yml'), 'utf8').includes('plugins/dev-flow/skills/arch-first/scripts/arch-check.cjs'));
+  check('project-init: --settings declara marketplace y plugins sin pisar lo que había', pset.extraKnownMarketplaces['ai-env'].source.repo.endsWith('/ai-env') && pset.extraKnownMarketplaces['ai-env'].autoUpdate === true && pset.enabledPlugins['dev-flow@ai-env'] === true && pset.enabledPlugins['arch@ai-env'] === true && pset.enabledPlugins['guard@ai-env'] === false && pset.permissions.allow.length === 1);
+  check('project-init: --ci agrega los workflows y el de arquitectura trae el verificador del plugin', fs.existsSync(path.join(ip, '.github', 'workflows', 'security.yml')) && fs.readFileSync(path.join(ip, '.github', 'workflows', 'architecture.yml'), 'utf8').includes('plugins/arch/skills/arch-first/scripts/arch-check.cjs'));
   const det2 = JSON.parse(N(ip, path.join(A, 'project-init', 'scripts', 'detect.cjs')).out);
   check('project-init: detect informa los plugins activos del repo', det2.projectPlugins.includes('dev-flow@ai-env') && !det2.projectPlugins.includes('guard@ai-env'));
   fs.rmSync(ip, { recursive: true, force: true });
@@ -561,9 +563,10 @@ if (fs.existsSync(SU) && fs.existsSync(DR)) {
 // --- Estructura de los plugins
 const fm = (p) => fs.existsSync(p) && fs.readFileSync(p, 'utf8').replace(/^\uFEFF/, '').startsWith('---');
 const expected = {
-  'dev-flow': ['feature-flow', 'feature-run', 'feature-close', 'budget-plan', 'spec-interview', 'pr-prep', 'arch-first', 'adr', 'security-diff', 'project-init', 'setup', 'doctor'],
+  'arch': ['arch-first', 'adr'],
+  'dev-flow': ['feature-flow', 'feature-run', 'feature-close', 'quick-fix', 'budget-plan', 'spec-interview', 'pr-prep', 'security-diff', 'project-init', 'setup', 'doctor'],
   'app-review': ['app-architecture-review', 'api-call-rules', 'frontend-rules'],
-  'cloud-ops': ['context-ledger', 'azure-claim-check', 'client-deliverables', 'deliverable-review', 'azure-inventory-kql'],
+  'cloud-ops': ['context-ledger', 'azure-claim-check', 'client-deliverables', 'deliverable-review', 'azure-inventory-kql', 'iac-change-review'],
   'front-studio': ['redesign', 'brand-intake', 'product-map', 'design-direction', 'live-preview', 'react-port', 'ui-review', 'security-reaudit'],
 };
 for (const [plug, skills] of Object.entries(expected)) {
@@ -787,11 +790,74 @@ process.exit(0);`);
   let r = runNode(rh, JSON.stringify({ source: 'startup', cwd: fr }), { CLAUDE_PROJECT_DIR: fr, CLAUDE_BUDGET_DIR: path.join(base, 'bd') });
   check('rehydrate: al arrancar inyecta la etapa y el siguiente paso de la feature', r.code === 0 && /Etapa actual: commit-docs/.test(r.out) && /\/dev-flow:feature-run mi-feature/.test(r.out), `exit=${r.code}`);
   const ar = path.join(base, 'con-arq'); fs.mkdirSync(ar); sh(ar, ['init', '-q', '-b', 'main']);
-  spawnSync(process.execPath, [path.join(A, 'arch-first', 'scripts', 'scaffold.cjs'), '--type', 'cli', '--lang', 'ts', '--name', 'demo'], { cwd: ar, encoding: 'utf8' });
+  spawnSync(process.execPath, [path.join(AS, 'arch-first', 'scripts', 'scaffold.cjs'), '--type', 'cli', '--lang', 'ts', '--name', 'demo'], { cwd: ar, encoding: 'utf8' });
+  const as = path.join(AR, 'hooks', 'arch-start.cjs');
+  r = runNode(as, JSON.stringify({ source: 'startup', cwd: ar }), { CLAUDE_PROJECT_DIR: ar });
+  check('arch-start: avisa al arrancar si la arquitectura está sin aprobar', r.code === 0 && /arquitectura sin aprobar/.test(r.out) && /\/arch:arch-first/.test(r.out), `exit=${r.code}`);
+  const vac = emptyProj2(); r = runNode(as, JSON.stringify({ source: 'startup', cwd: vac }), { CLAUDE_PROJECT_DIR: vac });
+  check('arch-start: sin architecture.json no dice nada', r.code === 0 && r.out.trim() === '');
   r = runNode(rh, JSON.stringify({ source: 'startup', cwd: ar }), { CLAUDE_PROJECT_DIR: ar });
-  check('rehydrate: avisa al arrancar si la arquitectura está sin aprobar', r.code === 0 && /arquitectura sin aprobar/.test(r.out), `exit=${r.code}`);
+  check('rehydrate: la arquitectura ya no es asunto de dev-flow (lo avisa el plugin arch)', r.code === 0 && r.out.trim() === '');
   r = runNode(rh, JSON.stringify({ source: 'startup', cwd: emptyProj2() }), {});
   check('rehydrate: en un repo sin nada que decir no inyecta nada', r.code === 0 && r.out.trim() === '');
+}
+
+// --- Independencia entre plugins: nadie lee archivos de otro plugin
+{
+  const bad = [];
+  const walk = (d) => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(path.join(d, e.name)) : [path.join(d, e.name)]));
+  for (const plug of fs.readdirSync(P)) {
+    for (const f of walk(path.join(P, plug)).filter((x) => /\.(cjs|js)$/.test(x))) {
+      const txt = fs.readFileSync(f, 'utf8');
+      for (const m of txt.matchAll(/require\((?:path\.join\(__dirname,\s*)?((?:'[^']*',?\s*)+)\)?\)/g)) {
+        const parts = [...m[1].matchAll(/'([^']*)'/g)].map((x) => x[1]);
+        if (!parts.length || !/^\.\.?(\/|$)/.test(parts[0])) continue;
+        const target = path.resolve(path.dirname(f), ...parts);
+        if (!target.startsWith(path.join(P, plug) + path.sep)) bad.push(`${path.relative(P, f)} -> ${parts.join('/')}`);
+      }
+      for (const m of txt.matchAll(/path\.join\(__dirname,\s*((?:'[^']*',?\s*)+)\)/g)) {
+        const parts = [...m[1].matchAll(/'([^']*)'/g)].map((x) => x[1]);
+        const target = path.resolve(path.dirname(f), ...parts);
+        if (!target.startsWith(path.join(P, plug) + path.sep) && target !== path.join(P, plug)) bad.push(`${path.relative(P, f)} -> ${parts.join('/')}`);
+      }
+    }
+  }
+  lastOut = bad.join(' | ');
+  check('plugins: ningún script sale de la carpeta de su propio plugin', bad.length === 0);
+  const dfDeps = JSON.parse(fs.readFileSync(path.join(DF, '.claude-plugin', 'plugin.json'), 'utf8')).dependencies || [];
+  check('dev-flow: declara su dependencia del plugin arch', dfDeps.includes('arch'));
+}
+
+// --- Versionado: una versión por plugin, un tag por publicación, y un cambio obliga a subir la versión
+{
+  const root = path.join(__dirname, '..');
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'aienv-ver-'));
+  fs.mkdirSync(path.join(base, 'scripts')); fs.mkdirSync(path.join(base, 'plugins', 'uno', '.claude-plugin'), { recursive: true }); fs.mkdirSync(path.join(base, 'plugins', 'dos', '.claude-plugin'), { recursive: true });
+  for (const f of ['versions-lib.cjs', 'check-versions.cjs', 'release.cjs']) fs.copyFileSync(path.join(root, 'scripts', f), path.join(base, 'scripts', f));
+  const man = (p, v) => fs.writeFileSync(path.join(base, 'plugins', p, '.claude-plugin', 'plugin.json'), JSON.stringify({ name: p, version: v }, null, 2) + '\n');
+  man('uno', '1.0.0'); man('dos', '1.0.0'); fs.writeFileSync(path.join(base, 'CHANGELOG.md'), '# Cambios\n\n## antes\n\n- algo\n');
+  const sh = (a) => spawnSync('git', a, { cwd: base, encoding: 'utf8', shell: false });
+  sh(['init', '-q', '-b', 'main']); sh(['config', 'user.email', 't@example.com']); sh(['config', 'user.name', 't']); sh(['add', '-A']); sh(['commit', '-q', '-m', 'init']);
+  const X = (script, argv = []) => { const x = spawnSync(process.execPath, [path.join(base, 'scripts', script), ...argv], { cwd: base, encoding: 'utf8' }); lastOut = `${x.stdout}${x.stderr}`; return { code: x.status, out: lastOut }; };
+  check('versiones: sin tags todavía, el chequeo pasa (pendiente de publicar)', X('check-versions.cjs').code === 0 && /pendiente de publicar/.test(lastOut));
+  let r = X('release.cjs', ['--tag-missing']);
+  check('versiones: --tag-missing crea <plugin>--v<versión> para cada plugin', r.code === 0 && sh(['tag', '--list']).stdout.includes('uno--v1.0.0') && sh(['tag', '--list']).stdout.includes('dos--v1.0.0'));
+  check('versiones: recién publicado, el chequeo pasa', X('check-versions.cjs').code === 0 && /publicado/.test(lastOut));
+  fs.writeFileSync(path.join(base, 'plugins', 'uno', 'nuevo.md'), 'cambio\n');
+  r = X('check-versions.cjs');
+  check('versiones: cambiar un plugin sin subir su versión falla', r.code === 1 && /uno: el contenido cambió desde uno--v1\.0\.0/.test(r.out) && !/dos: el contenido/.test(r.out), `exit=${r.code}`);
+  check('versiones: release rechaza una nota vacía', X('release.cjs', ['uno', 'minor', 'corta']).code === 1);
+  r = X('release.cjs', ['--changed', 'minor', 'agrega un archivo de ejemplo']);
+  const v1 = JSON.parse(fs.readFileSync(path.join(base, 'plugins', 'uno', '.claude-plugin', 'plugin.json'), 'utf8')).version, v2 = JSON.parse(fs.readFileSync(path.join(base, 'plugins', 'dos', '.claude-plugin', 'plugin.json'), 'utf8')).version;
+  check('versiones: release --changed sube solo el plugin que cambió', r.code === 0 && v1 === '1.1.0' && v2 === '1.0.0', `uno=${v1} dos=${v2}`);
+  check('versiones: release anota la versión en CHANGELOG.md arriba de lo anterior', /— uno 1\.1\.0\n\n- agrega un archivo de ejemplo/.test(fs.readFileSync(path.join(base, 'CHANGELOG.md'), 'utf8')) && fs.readFileSync(path.join(base, 'CHANGELOG.md'), 'utf8').indexOf('uno 1.1.0') < fs.readFileSync(path.join(base, 'CHANGELOG.md'), 'utf8').indexOf('## antes'));
+  check('versiones: con la versión subida, el chequeo vuelve a pasar', X('check-versions.cjs').code === 0);
+  man('dos', '0.9.0');
+  check('versiones: bajar una versión por debajo de la publicada falla', X('check-versions.cjs').code === 1 && /no supera a la última publicada/.test(lastOut));
+  man('dos', '1.0.0');
+  const real = spawnSync(process.execPath, [path.join(root, 'scripts', 'check-versions.cjs'), '--json'], { encoding: 'utf8' });
+  lastOut = real.stdout + real.stderr; let rj = {}; try { rj = JSON.parse(real.stdout); } catch { /* */ }
+  check('versiones: todos los plugins del repo tienen versión x.y.z y ninguno cambió sin subirla', real.status === 0 && (rj.plugins || []).length === fs.readdirSync(P).length);
 }
 
 // --- Instaladores de un comando

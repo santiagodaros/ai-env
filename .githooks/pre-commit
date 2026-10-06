@@ -1,2 +1,4 @@
 #!/bin/sh
+node scripts/sync-shared.cjs --check || { echo "Commit bloqueado: corré node scripts/sync-shared.cjs"; exit 1; }
+node scripts/check-versions.cjs >/dev/null || { node scripts/check-versions.cjs; echo "Commit bloqueado: un plugin cambió sin subir su versión"; exit 1; }
 node scripts/check.cjs || { echo "Commit bloqueado por scripts/check.cjs"; exit 1; }

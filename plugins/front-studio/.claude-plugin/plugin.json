@@ -1,5 +1,6 @@
 {
   "name": "front-studio",
+  "version": "1.0.0",
   "description": "Rediseño de front con preview en vivo, brand kit, dirección visual anti-look-IA y re-auditoría de seguridad.",
   "author": {
     "name": "ai-env contributors",

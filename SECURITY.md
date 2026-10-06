@@ -2,7 +2,7 @@
 
 ## Qué ejecuta este repo en tu máquina
 
-Los plugins `guard`, `dev-flow` y `cloud-ops` traen hooks: scripts de Node que Claude Code corre con tus permisos de usuario, fuera de cualquier sandbox. Antes de instalarlos, leelos; son cortos y están en `plugins/*/hooks/`.
+Los plugins `guard`, `arch`, `dev-flow` y `cloud-ops` traen hooks: scripts de Node que Claude Code corre con tus permisos de usuario, fuera de cualquier sandbox. Antes de instalarlos, leelos; son cortos y están en `plugins/*/hooks/`.
 
 Lo que cumplen hoy, y lo que se le exige a cualquier cambio:
 

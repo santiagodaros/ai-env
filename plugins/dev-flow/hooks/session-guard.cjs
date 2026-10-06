@@ -3,7 +3,6 @@
 // - Bloquea `claude` con --bg/--background, -w/--worktree, --tmux o -p/--print, salvo vía feature-flow/scripts/launch.cjs.
 // - launch.cjs --launch pide confirmación humana en pantalla.
 // - Una sesión lanzada por feature-flow (FEATURE_FLOW_CHILD=1) no puede lanzar nada.
-// - Claude no puede sellar la aprobación de la arquitectura (approve.cjs).
 const { run, block, ask } = require('./lib.cjs');
 
 run('session-guard', (input) => {
@@ -13,7 +12,6 @@ run('session-guard', (input) => {
   // sin encadenar nada: así no sirve de salvoconducto para otro `claude` en la misma línea.
   const viaLauncher = /^\s*node\s+("[^"]*feature-flow[\\/]scripts[\\/]launch\.cjs"|[^\s;&|"']*feature-flow[\\/]scripts[\\/]launch\.cjs)(\s+--?[\w-]+(?:[= ][\w.\/:-]+)?)*\s*$/.test(cmd);
   const child = !!process.env.FEATURE_FLOW_CHILD;
-  if (/arch-first[\\/]scripts[\\/]approve\.cjs/.test(cmd)) block('la aprobación de la arquitectura la da la persona. Pedile que corra approve.cjs en su terminal.', 'approve-by-claude');
   if (viaLauncher) {
     if (!/--launch\b/.test(cmd)) return;
     if (child) block('una sesión lanzada por feature-flow no puede lanzar otras.', 'child-launch');

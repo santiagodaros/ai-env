@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+// FUENTE ÚNICA: shared/. Los plugins llevan una copia porque un plugin instalado no puede leer archivos de otro.
+// Después de editar: node scripts/sync-shared.cjs
 // Registro de decisiones de arquitectura (ADR) en docs/decisions/. Sin dependencias.
 // Uso: node adr.cjs new "<título>" [--status aceptada|propuesta] [--context t] [--decision t] [--alternatives t] [--consequences t]
 //      node adr.cjs index    (regenera docs/decisions/README.md)

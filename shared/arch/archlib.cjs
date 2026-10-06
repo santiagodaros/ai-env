@@ -1,3 +1,5 @@
+// FUENTE ÚNICA: shared/. Los plugins llevan una copia porque un plugin instalado no puede leer archivos de otro.
+// Después de editar: node scripts/sync-shared.cjs
 // Núcleo de arch-first: contrato architecture.json, resolución de capas, chequeo de imports y aprobación por hash.
 const fs = require('fs'), path = require('path'), crypto = require('crypto');
 const posix = p => p.replace(/\\/g, '/');

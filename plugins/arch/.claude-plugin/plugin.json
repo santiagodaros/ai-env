@@ -1,0 +1,18 @@
+{
+  "name": "arch",
+  "version": "1.0.0",
+  "description": "Arquitectura hexagonal antes del código: diseño con puertos y seguridad por capa, vista previa, aprobación humana sellada por hash, un hook que impide escribir código sin aprobar o fuera de las capas, y registro de decisiones (ADR).",
+  "author": {
+    "name": "ai-env contributors",
+    "url": "https://github.com/santiagodaros/ai-env"
+  },
+  "homepage": "https://github.com/santiagodaros/ai-env/tree/main/plugins/arch",
+  "repository": "https://github.com/santiagodaros/ai-env",
+  "license": "MIT",
+  "keywords": [
+    "arquitectura",
+    "hexagonal",
+    "adr",
+    "hooks"
+  ]
+}

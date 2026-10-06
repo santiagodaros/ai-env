@@ -17,7 +17,7 @@ Dos pasos: primero el escáner, que no opina; después tu revisión de lo que el
 2. **Alta.** Se corrigen; no se esquivan. Si es un falso positivo claro (por ejemplo un secreto falso en una prueba), el comentario `secscan-allow` en esa línea la excluye. Un riesgo real que el usuario decide aceptar se declara en el `STATE.md` con una línea `Riesgo aceptado: <Sxxx> <motivo de al menos 10 caracteres>`: la escribe el usuario, no vos, y queda en el PR.
 3. **Media.** Para cada una, leé el código real y decidí: corregir, o justificar por qué no aplica. Si toca identidad, permisos o secretos, usá el subagente `reviewer`.
 4. **Dependencias nuevas.** Para cada una: qué hace, si es necesaria, mantenimiento y licencia (verificalo, no lo supongas), y si el lockfile quedó versionado.
-5. **Contra la línea base.** Revisá los controles que el diseño prometía en `docs/architecture/ARCHITECTURE.md` (sección Seguridad) y `references/security-baseline.md` de `arch-first`: ¿el código los cumple? Lo que no puedas comprobar, decilo como "sin verificar".
+5. **Contra la línea base.** Revisá los controles que el diseño prometía en `docs/architecture/ARCHITECTURE.md` (sección Seguridad) y en la lista `security` de `architecture.json`, si el repo tiene arquitectura declarada: ¿el código los cumple? Lo que no puedas comprobar, decilo como "sin verificar".
 6. Entregá un resumen corto: cuántos hallazgos por severidad, qué corregiste, qué quedó aceptado y por quién.
 
 ## Qué es y qué no es

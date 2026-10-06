@@ -76,7 +76,7 @@ const tg = testGate(files, noTest ? `Sin pruebas: ${noTest}` : '');
 gate('pruebas', tg.ok, tg.ok ? tg.note : 'cambia código y ninguna prueba. Agregá una prueba que falle sin el arreglo, o si el usuario decide que no corresponde, pasá --no-test "<su motivo, 10 caracteres o más>"');
 
 try {
-  const ac = path.join(__dirname, '..', '..', 'arch-first', 'scripts', 'arch-check.cjs');
+  const ac = path.join(__dirname, '..', '..', '..', 'lib', 'arch', 'arch-check.cjs');
   const r = run(process.execPath, [ac, '--json'], { cwd: root, shell: false }); const j = JSON.parse(r.stdout || '{}');
   if (j.configs) gate('arquitectura', !j.violations.length, j.violations.length ? j.violations.slice(0, 5).map((v) => `${v.file}${v.line ? ':' + v.line : ''}: ${v.msg}`).join('; ') : 'la regla de dependencia se cumple');
 } catch { /* sin architecture.json */ }

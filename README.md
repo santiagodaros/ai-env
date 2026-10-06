@@ -22,7 +22,7 @@ Si preferís leerlo antes de ejecutarlo, que es lo razonable con cualquier insta
 
 | Variable | Efecto |
 |---|---|
-| `AI_ENV_PLUGINS="guard dev-flow"` | Instala solo esos plugins (por defecto, los cinco; cada uno es independiente) |
+| `AI_ENV_PLUGINS="guard dev-flow"` | Instala solo esos plugins (por defecto, los seis) |
 | `AI_ENV_NO_SETUP=1` | No toca `settings.json`: sin statusline ni actualización automática |
 | `AI_ENV_FORCE_STATUSLINE=1` | Reemplaza la statusline que ya tengas |
 | `AI_ENV_SOURCE=usuario/repo` | Instala desde un fork o una carpeta local |
@@ -31,7 +31,7 @@ A mano, sin instalador:
 
 ```powershell
 claude plugin marketplace add santiagodaros/ai-env
-claude plugin install guard@ai-env        # y los que quieras: dev-flow, app-review, cloud-ops, front-studio
+claude plugin install guard@ai-env        # y los que quieras: arch, dev-flow, app-review, cloud-ops, front-studio
 ```
 
 Si instalaste a mano, una vez por máquina dentro de Claude Code:
@@ -43,19 +43,20 @@ Si instalaste a mano, una vez por máquina dentro de Claude Code:
 
 Y una vez por repo: `/dev-flow:project-init`. Con `--settings` deja el marketplace y los plugins declarados en `.claude/settings.json`, así cargan solos para quien clone el repo y confíe en la carpeta.
 
-**Actualizaciones.** Los plugins no declaran `version`: cada commit es una versión. Claude Code trae la actualización automática apagada para marketplaces de terceros; el instalador (o `/dev-flow:setup`) la enciende. A mano: `claude plugin marketplace update ai-env`.
+**Versiones y actualizaciones.** Cada plugin tiene su versión (`x.y.z`) y cada publicación su tag `<plugin>--v<versión>`. Recibís una actualización cuando sube la versión, nunca por un commit a medio hacer. Claude Code trae la actualización automática apagada para marketplaces de terceros; el instalador (o `/dev-flow:setup`) la enciende. A mano: `claude plugin marketplace update ai-env` y `claude plugin update <plugin>@ai-env`. Qué cambió en cada versión: [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Plugins
 
 | Plugin | Qué trae | Costo fijo de contexto |
 |---|---|---|
 | [`guard`](plugins/guard/README.md) | 3 hooks de protección: secretos, archivos protegidos y comandos con impacto. Sirve en cualquier repo, sin configuración | 0 tokens |
-| [`dev-flow`](plugins/dev-flow/README.md) | 13 skills manuales y 4 hooks: arquitectura antes del código, features, camino corto, compuertas, cierre y presupuesto | hasta ~1.700 tokens |
+| [`arch`](plugins/arch/README.md) | 2 skills y 2 hooks: arquitectura hexagonal aprobada por una persona antes del código, y registro de decisiones | ~280 tokens |
+| [`dev-flow`](plugins/dev-flow/README.md) | 11 skills manuales y 3 hooks: features, camino corto, compuertas, cierre y presupuesto. Instala `arch` como dependencia | hasta ~1.400 tokens |
 | [`app-review`](plugins/app-review/README.md) | 3 skills y 2 subagentes de revisión | ~600 tokens |
 | [`cloud-ops`](plugins/cloud-ops/README.md) | 6 skills de Azure, verificación de Terraform, Bicep y PowerShell, y el servidor MCP de Microsoft Learn | ~890 tokens |
 | [`front-studio`](plugins/front-studio/README.md) | 8 skills de rediseño de front y re-auditoría de seguridad | ~690 tokens |
 
-Cada plugin es independiente y tiene su propio README con el detalle de skills, hooks, configuración y límites. Los costos son la estimación de `claude plugin details <plugin>@ai-env`; los hooks no consumen contexto. Las skills se invocan con el prefijo del plugin (`/dev-flow:feature-run`).
+Cada plugin tiene su propio README con el detalle de skills, hooks, configuración y límites. Los costos son la estimación de `claude plugin details <plugin>@ai-env`; los hooks no consumen contexto. Las skills se invocan con el prefijo del plugin (`/dev-flow:feature-run`).
 
 **Actualizaciones.** Los plugins no declaran `version`: cada commit es una versión. Claude Code trae la actualización automática apagada para marketplaces de terceros; el instalador (o `/dev-flow:setup`) la enciende. A mano: `claude plugin marketplace update ai-env`. Lo que cambia para quien los usa está en [`CHANGELOG.md`](CHANGELOG.md).
 
@@ -65,7 +66,7 @@ Cada plugin es independiente y tiene su propio README con el detalle de skills, 
 |---|---|
 | Máquina nueva | El instalador. Después, `/dev-flow:doctor` |
 | Repo nuevo o recién clonado | `/dev-flow:project-init` (con `--settings` deja los plugins declarados para quien clone el repo) |
-| Programa, página o automatización nueva | `/dev-flow:arch-first`: no se escribe código hasta que apruebes la arquitectura |
+| Programa, página o automatización nueva | `/arch:arch-first`: no se escribe código hasta que apruebes la arquitectura |
 | Feature | `/dev-flow:feature-run`. Al abrir una sesión en su rama, Claude ya sabe la etapa y el paso siguiente |
 | Arreglo puntual | `/dev-flow:quick-fix` |
 | Cambio de infraestructura | Pedilo normalmente: `iac-change-review` resume el plan antes de aplicar e `iac-verify` valida al terminar |
@@ -93,7 +94,7 @@ Variables de entorno del proceso de Claude Code (no de los comandos que corre Cl
 ## Verificación
 
 - `node tests/smoke-test.js`: pruebas de hooks, topes, compuertas, presupuesto, instalación y estructura. Corre en Linux, Windows y macOS en cada push.
-- El CI además ejecuta el instalador dos veces en los tres sistemas con la CLI real y valida cada plugin con `claude plugin validate`.
+- El CI además ejecuta el instalador dos veces en los tres sistemas con la CLI real y valida cada plugin con `claude plugin validate --strict`. Un plugin que cambia sin subir su versión no pasa.
 - Evals de disparo por plugin (`claude plugin eval plugins/<plugin> --model haiku --no-publish`). Consumen cuota de tu cuenta, por eso no corren en CI.
 - [`docs/PRUEBA-REAL.md`](docs/PRUEBA-REAL.md): checklist para confirmar en tu máquina que los hooks bloquean en una sesión real.
 

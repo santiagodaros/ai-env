@@ -2,13 +2,13 @@
 #   irm https://raw.githubusercontent.com/santiagodaros/ai-env/main/install.ps1 | iex
 # Se puede volver a correr: actualiza en vez de duplicar.
 # Opciones por variable de entorno (definilas antes de correrlo):
-#   $env:AI_ENV_PLUGINS = 'guard dev-flow'   que plugins instalar (por defecto, los cinco)
+#   $env:AI_ENV_PLUGINS = 'guard dev-flow'   que plugins instalar (por defecto, los seis)
 #   $env:AI_ENV_NO_SETUP = '1'               no tocar ~\.claude\settings.json (statusline y actualizacion automatica)
 #   $env:AI_ENV_FORCE_STATUSLINE = '1'       reemplazar una statusline que ya tengas
 #   $env:AI_ENV_SOURCE = 'usuario/repo'      instalar desde un fork o una carpeta local
 $ErrorActionPreference = 'Stop'
 $source = if ($env:AI_ENV_SOURCE) { $env:AI_ENV_SOURCE } else { 'santiagodaros/ai-env' }
-$plugins = if ($env:AI_ENV_PLUGINS) { $env:AI_ENV_PLUGINS -split '[ ,]+' | Where-Object { $_ } } else { 'guard', 'dev-flow', 'app-review', 'cloud-ops', 'front-studio' }
+$plugins = if ($env:AI_ENV_PLUGINS) { $env:AI_ENV_PLUGINS -split '[ ,]+' | Where-Object { $_ } } else { 'guard', 'arch', 'dev-flow', 'app-review', 'cloud-ops', 'front-studio' }
 function Say($t) { Write-Host "`n== $t" }
 function Need($cmd, $hint) { if (-not (Get-Command $cmd -ErrorAction SilentlyContinue)) { throw "Falta $cmd. $hint" } }
 function Run { $old = $ErrorActionPreference; $ErrorActionPreference = 'Continue'; $exe = $args[0]; $rest = @($args | Select-Object -Skip 1); $out = & $exe @rest 2>&1 | ForEach-Object { "$_" }; $code = $LASTEXITCODE; $ErrorActionPreference = $old; $out | ForEach-Object { Write-Host $_ }; if ($code -ne 0) { throw "Fallo ($code): $($args -join ' ') :: $($out -join ' ')" } }

@@ -4,7 +4,8 @@
   "owner": {"name": "ai-env contributors", "url": "https://github.com/santiagodaros/ai-env"},
   "plugins": [
     {"name": "guard", "source": "./plugins/guard", "description": "Hooks de protección para cualquier repo: secretos, archivos protegidos, lectura de .env y comandos con impacto (git, rm, Azure, Terraform, despliegues sin what-if)."},
-    {"name": "dev-flow", "source": "./plugins/dev-flow", "description": "Workflow por features: arquitectura hexagonal aprobada antes del código, camino corto para arreglos chicos, compuertas de pruebas y seguridad, cierre documentado y presupuesto del límite de 5 h."},
+    {"name": "arch", "source": "./plugins/arch", "description": "Arquitectura hexagonal antes del código: diseño, vista previa, aprobación humana, hook que impide escribir código sin aprobar o fuera de las capas, y registro de decisiones (ADR)."},
+    {"name": "dev-flow", "source": "./plugins/dev-flow", "description": "Workflow por features: una sesión por feature con topes, camino corto para arreglos chicos, compuertas de pruebas, arquitectura y seguridad, cierre documentado y presupuesto del límite de 5 h. Requiere arch."},
     {"name": "app-review", "source": "./plugins/app-review", "description": "Revisión de código de aplicación en tres lentes (identidad, seguridad, costo de APIs), reglas para React y llamadas a APIs, y subagentes reviewer y explorer."},
     {"name": "cloud-ops", "source": "./plugins/cloud-ops", "description": "Azure: verificación contra Microsoft Learn (con su servidor MCP), KQL de inventario, revisión de planes de Terraform y what-if de Bicep, verificación de IaC al terminar, entregables y registro de estado."},
     {"name": "front-studio", "source": "./plugins/front-studio", "description": "Rediseño de front con preview en vivo, brand kit y re-auditoría de seguridad."}

@@ -28,7 +28,7 @@ claude --version                         # 2.1.290 o superior
 irm https://raw.githubusercontent.com/santiagodaros/ai-env/main/install.ps1 | iex
 ```
 
-Esperado: termina con el diagnóstico sin ninguna `FALLA`, los 5 plugins en `OK`, "actualización automática: activa" y "statusline configurada".
+Esperado: termina con el diagnóstico sin ninguna `FALLA`, los 6 plugins en `OK`, "actualización automática: activa" y "statusline configurada".
 
 - [ ] el instalador termina sin errores
 - [ ] existe `$HOME\.claude\settings.json.bak` si ya tenías settings
@@ -66,14 +66,14 @@ Dentro de Claude Code: `/dev-flow:doctor`.
 
 Si alguno no bloquea, es el hallazgo más importante: anotá qué hook y qué viste. En 3.4 y 3.5 anotá también **cómo se ve** el pedido de confirmación; en modo no interactivo se comporta como bloqueo, en interactivo no lo pude observar.
 
-## 4. Hooks y flujo de `dev-flow`
+## 4. Hooks y flujo de `arch` y `dev-flow`
 
 | # | Qué hacer | Esperado |
 |---|---|---|
 | 4.1 | "Ejecutá `claude -p hola`" | **Bloqueado** por session-guard |
-| 4.2 | `/dev-flow:arch-first una CLI de automatización en TypeScript llamada demo` | Crea esqueleto, `architecture.json` y preview **sin código** |
+| 4.2 | `/arch:arch-first una CLI de automatización en TypeScript llamada demo` | Crea esqueleto, `architecture.json` y preview **sin código** |
 | 4.3 | "Creá `src/domain/saludo.ts` con una función" | **Bloqueado** por arch-guard: arquitectura sin aprobar |
-| 4.4 | "Corré approve.cjs" | **Bloqueado**: la aprobación es tuya |
+| 4.4 | "Corré approve.cjs" | **Bloqueado** por arch-guard: la aprobación es tuya |
 
 Aprobación, en **tu** terminal (la ruta la muestra Claude en el paso 4.2):
 

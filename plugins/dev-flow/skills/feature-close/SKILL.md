@@ -26,7 +26,7 @@ Pedí una sola confirmación al inicio: "Voy a verificar, escribir los dos docum
 2. **Historial.** Agregá la entrada a `docs/CHANGELOG.md` (créalo con un título y `## Sin publicar` si no existe) usando `templates/CHANGELOG-entry.md`, en la sección de arriba. Cada línea sale de los FACTS: ningún cambio que no figure en los commits o el diff. El "por qué" sale de las decisiones del STATE.
 3. **Diseño.** Escribí `docs/design/<slug>.md` con `templates/DESIGN.md`. Leé el código real de los archivos cambiados antes de describir el flujo; no te guíes por los mensajes de commit. Compará con el `SPEC.md`: en "Diferencias contra el SPEC" va todo lo que se hizo distinto o quedó afuera.
 4. **No inventes.** Lo que no puedas comprobar contra el código o las pruebas va en la sección "Sin verificar", no en el texto como si fuera cierto. Sin nombres de cliente ni datos de tenant.
-4b. **ADR.** Cada decisión del `STATE.md` marcada con `[ADR]` (aparece en los FACTS) se registra con la skill `adr` antes de cerrar.
+4b. **ADR.** Cada decisión del `STATE.md` marcada con `[ADR]` (aparece en los FACTS) se registra con la skill `arch:adr` antes de cerrar.
 5. **Cerrar el estado.** En `docs/features/<slug>/STATE.md` cambiá la línea `Estado:` a `Estado: cerrada (AAAA-MM-DD)`.
 6. **Validar.** `node "${CLAUDE_PLUGIN_ROOT}/skills/feature-close/scripts/verify.cjs"`. Si falla, corregí lo que marca (rutas citadas que no existen, secciones vacías, datos privados) y repetí. No commitees hasta que dé OK.
 7. **Descripción del PR.** `node "${CLAUDE_PLUGIN_ROOT}/skills/feature-close/scripts/pr-body.cjs"`: arma `docs/features/<slug>/PR.md` (título y cuerpo) con lo ya verificado, sin reescribir nada a mano.

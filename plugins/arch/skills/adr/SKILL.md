@@ -1,7 +1,7 @@
 ---
 name: adr
 description: >-
-  Registra una decisión de arquitectura como página propia en docs/decisions/ (contexto, decisión, alternativas, consecuencias) y mantiene el índice. Usar cuando se cierre una decisión que afecte la estructura, la seguridad, las dependencias o el despliegue. Se invoca a mano con /dev-flow:adr seguido de la decisión.
+  Registra una decisión de arquitectura como página propia en docs/decisions/ (contexto, decisión, alternativas, consecuencias) y mantiene el índice. Usar cuando se cierre una decisión que afecte la estructura, la seguridad, las dependencias o el despliegue. Se invoca a mano con /arch:adr seguido de la decisión.
 disable-model-invocation: true
 argument-hint: "[decisión a registrar]"
 allowed-tools: Bash(node *skills/adr/scripts/adr.cjs*)
@@ -19,4 +19,4 @@ Decisión: $ARGUMENTS
 4. Una decisión no se reescribe: si cambia, creá otra ADR que la reemplace y marcá la anterior con `Estado: reemplazada por ADR-NNNN`.
 5. Sin nombres de cliente ni datos de tenant.
 
-Con `feature-close`: las decisiones del `STATE.md` marcadas con `[ADR]` se registran con esta skill al cerrar la feature.
+Con `dev-flow:feature-close`: las decisiones del `STATE.md` marcadas con `[ADR]` se registran con esta skill al cerrar la feature.

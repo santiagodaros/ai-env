@@ -1,6 +1,16 @@
 # Cambios
 
-Los plugins no declaran `version`: cada commit es una versión. Acá va lo que cambia para quien los usa.
+Cada plugin tiene su versión y cada publicación su tag `<plugin>--v<versión>`. Acá va lo que cambia para quien los usa.
+
+## 2026-10-06 — Versión 1.0.0 de los seis plugins
+
+Primera publicación con versiones: `guard 1.0.0`, `arch 1.0.0`, `dev-flow 1.0.0`, `app-review 1.0.0`, `cloud-ops 1.0.0`, `front-studio 1.0.0`.
+
+- **Versionado.** Cada plugin declara `version` y cada publicación queda con su tag. Las actualizaciones llegan cuando sube la versión, no por cada commit.
+- **Plugin nuevo `arch`**, separado de `dev-flow`: las skills `arch-first` y `adr`, el hook `arch-guard` (que ahora también bloquea que Claude corra `approve.cjs`) y el aviso de arquitectura sin aprobar al arrancar.
+- **`dev-flow`** queda con el workflow de features y declara `arch` como dependencia: al instalar `dev-flow`, `arch` se instala solo. Sus compuertas siguen verificando la arquitectura.
+- Cambia cómo se invocan dos skills: `/arch:arch-first` y `/arch:adr` (antes `/dev-flow:arch-first` y `/dev-flow:adr`).
+- `project-init --settings` declara también `arch@ai-env`.
 
 ## 2026-10-06 — Carril de infraestructura, camino corto y flujo que se conduce solo
 

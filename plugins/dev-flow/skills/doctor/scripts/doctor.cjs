@@ -43,11 +43,11 @@ const us = json(path.join(home, '.claude', 'settings.json')) || {};
 const ps = json(path.join(cwd, '.claude', 'settings.json')) || {};
 const pl = json(path.join(cwd, '.claude', 'settings.local.json')) || {};
 const en = { ...(us.enabledPlugins || {}), ...(ps.enabledPlugins || {}), ...(pl.enabledPlugins || {}) };
-for (const p of ['guard', 'dev-flow', 'app-review', 'cloud-ops', 'front-studio']) {
+for (const p of ['guard', 'arch', 'dev-flow', 'app-review', 'cloud-ops', 'front-studio']) {
   const k = Object.keys(en).find((x) => x === p || x.startsWith(p + '@'));
   if (k && en[k]) add('OK', `plugin ${p}`, k);
   else if (p === 'dev-flow') add('OK', 'plugin dev-flow', 'cargado en esta sesión (no figura en settings: --plugin-dir o sincronizado desde tu cuenta)');
-  else if (p === 'guard') add('AVISO', `plugin ${p} no figura como activo en settings`, `claude plugin install ${p}@ai-env`);
+  else if (p === 'guard' || p === 'arch') add('AVISO', `plugin ${p} no figura como activo en settings`, `claude plugin install ${p}@ai-env`);
   else add('INFO', `plugin ${p} no activo`, 'opcional');
 }
 const mk = (us.extraKnownMarketplaces || {})['ai-env'] || (ps.extraKnownMarketplaces || {})['ai-env'];
@@ -87,7 +87,7 @@ else {
   const pkg = json(path.join(cwd, 'package.json'));
   if (pkg) { const miss = ['typecheck', 'lint', 'test'].filter((s) => !(pkg.scripts && pkg.scripts[s])); add(miss.length ? 'AVISO' : 'OK', 'scripts de verificación', miss.length ? `faltan: ${miss.join(', ')} (stop-verify y feature-close no verifican lo que no existe)` : 'typecheck, lint, test'); }
   if (has('architecture.json')) {
-    try { const L = require('../../arch-first/scripts/archlib.cjs'); const st = L.approvalState(L.loadConfig(path.join(cwd, 'architecture.json'))); add(st.approved ? 'OK' : 'AVISO', 'arquitectura', st.approved ? 'aprobada' : `sin aprobar (${st.reason}): arch-guard bloquea el código`); }
+    try { const L = require('../../../lib/arch/archlib.cjs'); const st = L.approvalState(L.loadConfig(path.join(cwd, 'architecture.json'))); add(st.approved ? 'OK' : 'AVISO', 'arquitectura', st.approved ? 'aprobada' : `sin aprobar (${st.reason}): arch-guard bloquea el código`); }
     catch (e) { add('FALLA', 'architecture.json', e.message); }
   } else add('INFO', 'sin architecture.json', 'arch-guard no actúa en este repo');
 }

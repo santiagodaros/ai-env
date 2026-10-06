@@ -3,13 +3,13 @@
 #   curl -fsSL https://raw.githubusercontent.com/santiagodaros/ai-env/main/install.sh | sh
 # Se puede volver a correr: actualiza en vez de duplicar.
 # Opciones por variable de entorno:
-#   AI_ENV_PLUGINS="guard dev-flow"   qué plugins instalar (por defecto, los cinco)
+#   AI_ENV_PLUGINS="guard dev-flow"   qué plugins instalar (por defecto, los seis)
 #   AI_ENV_NO_SETUP=1                 no tocar ~/.claude/settings.json (statusline y actualización automática)
 #   AI_ENV_FORCE_STATUSLINE=1         reemplazar una statusline que ya tengas
 #   AI_ENV_SOURCE=usuario/repo        instalar desde un fork o una carpeta local
 set -e
 SOURCE="${AI_ENV_SOURCE:-santiagodaros/ai-env}"
-PLUGINS="${AI_ENV_PLUGINS:-guard dev-flow app-review cloud-ops front-studio}"
+PLUGINS="${AI_ENV_PLUGINS:-guard arch dev-flow app-review cloud-ops front-studio}"
 say() { printf '\n== %s\n' "$1"; }
 need() { command -v "$1" >/dev/null 2>&1 || { printf 'Falta %s. %s\n' "$1" "$2" >&2; exit 1; }; }
 

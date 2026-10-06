@@ -1,7 +1,7 @@
 ---
 name: arch-first
 description: >-
-  Antes de escribir código de un programa, página o automatización nuevo: define la arquitectura hexagonal con sus puertos y su seguridad por capa, muestra una vista previa, espera la aprobación del usuario y recién ahí habilita el código, que un hook y un verificador mantienen dentro de las capas. Solo se invoca a mano con /dev-flow:arch-first seguido de la descripción del proyecto.
+  Antes de escribir código de un programa, página o automatización nuevo: define la arquitectura hexagonal con sus puertos y su seguridad por capa, muestra una vista previa, espera la aprobación del usuario y recién ahí habilita el código, que un hook y un verificador mantienen dentro de las capas. Solo se invoca a mano con /arch:arch-first seguido de la descripción del proyecto.
 disable-model-invocation: true
 argument-hint: "[qué se va a construir]"
 allowed-tools: Bash(node *skills/arch-first/scripts/arch-check.cjs*) Bash(node *skills/arch-first/scripts/scaffold.cjs*) Bash(node *skills/arch-first/scripts/preview.cjs*)
@@ -22,7 +22,7 @@ Regla inicial para todo programa, página o automatización: arquitectura hexago
 5. **Vista previa.** `node "${CLAUDE_PLUGIN_ROOT}/skills/arch-first/scripts/preview.cjs"` genera `docs/architecture/preview.html` (diagrama, carpetas, reglas y seguridad). En la app de Claude, `--artifact` genera la versión para publicar como artifact HTML. Si el proyecto tiene UI, el aspecto visual lo resuelve `front-studio` (`live-preview`); acá se aprueba la estructura.
 6. **Parada humana.** Mostrá el preview y pedí revisión. Decile al usuario que apruebe en una terminal aparte: `node "${CLAUDE_PLUGIN_ROOT}/skills/arch-first/scripts/approve.cjs"` (en la carpeta del proyecto). **No lo corras vos ni edites `Estado:` ni el sello**: un hook lo bloquea. La aprobación se invalida sola si cambia `architecture.json` o `ARCHITECTURE.md`.
 7. **Implementación.** Con la arquitectura aprobada, el hook `arch-guard` permite escribir código solo dentro de las capas y rechaza imports que rompan la regla de dependencia, infraestructura en el núcleo o lectura de entorno fuera de config. Escribí las pruebas junto con el código.
-8. **Verificación.** `node "${CLAUDE_PLUGIN_ROOT}/skills/arch-first/scripts/arch-check.cjs"` debe dar OK antes de cerrar; `feature-close` también lo exige.
+8. **Verificación.** `node "${CLAUDE_PLUGIN_ROOT}/skills/arch-first/scripts/arch-check.cjs"` debe dar OK antes de cerrar; `dev-flow:feature-close` y `dev-flow:quick-fix` también lo exigen.
 
 ## Reglas
 

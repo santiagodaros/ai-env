@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+// FUENTE ÚNICA: shared/. Los plugins llevan una copia porque un plugin instalado no puede leer archivos de otro.
+// Después de editar: node scripts/sync-shared.cjs
 // Verifica la arquitectura hexagonal de todos los architecture.json del repo.
 // Uso: node arch-check.cjs [--dir <carpeta>] [--json]   Exit 1 si hay violaciones.
 const fs = require('fs'), path = require('path');

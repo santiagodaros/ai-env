@@ -83,15 +83,6 @@ process.stdin.on('end', () => {
     }
   }
 
-  // Arquitectura declarada y todavía sin aprobar: avisarlo al arrancar, antes de que el primer intento de escribir código choque con arch-guard.
-  if (source !== 'compact' && fs.existsSync(path.join(cwd, 'architecture.json'))) {
-    try {
-      const L = require(path.join(__dirname, '..', 'skills', 'arch-first', 'scripts', 'archlib.cjs'));
-      const st = L.approvalState(L.loadConfig(path.join(cwd, 'architecture.json')));
-      if (!st.approved) out.push(`Este repo tiene una arquitectura sin aprobar (${st.reason}). No se puede escribir código hasta que la persona la apruebe: mostrale el preview de /dev-flow:arch-first y pedile que corra approve.cjs en su terminal.`);
-    } catch { /* architecture.json ilegible: lo informa arch-guard al escribir */ }
-  }
-
   if (out.length) process.stdout.write(out.join('\n\n---\n\n') + '\n');
   process.exit(0);
 });

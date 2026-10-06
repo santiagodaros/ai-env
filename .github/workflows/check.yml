@@ -10,9 +10,12 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with: { fetch-depth: 0, fetch-tags: true }
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
       - run: node scripts/sync-shared.cjs --check
+      - name: Un plugin que cambió sube su versión
+        run: node scripts/check-versions.cjs
       - run: node scripts/check.cjs
       - name: Prueba de humo de los plugins (hooks, topes, compuertas, presupuesto, setup)
         run: node tests/smoke-test.js
@@ -25,8 +28,8 @@ jobs:
       - name: Validar el marketplace y cada plugin con la CLI de Claude Code
         run: |
           npm install -g @anthropic-ai/claude-code
-          claude plugin validate .
-          for p in plugins/*; do claude plugin validate "$p"; done
+          claude plugin validate --strict .
+          for p in plugins/*; do claude plugin validate --strict "$p"; done
   installer:
     strategy:
       fail-fast: false
@@ -63,7 +66,7 @@ jobs:
           node -e '
             const fs=require("fs"),os=require("os"),path=require("path");
             const s=JSON.parse(fs.readFileSync(path.join(os.homedir(),".claude","settings.json"),"utf8"));
-            const want=["guard","dev-flow","app-review","cloud-ops","front-studio"].map(p=>p+"@ai-env");
+            const want=["guard","arch","dev-flow","app-review","cloud-ops","front-studio"].map(p=>p+"@ai-env");
             const miss=want.filter(p=>s.enabledPlugins[p]!==true);
             if(miss.length) throw new Error("plugins sin habilitar: "+miss);
             if(s.extraKnownMarketplaces["ai-env"].autoUpdate!==true) throw new Error("autoUpdate apagado");

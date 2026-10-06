@@ -1,17 +1,19 @@
 # dev-flow
 
-Workflow de desarrollo, del repo vacío al PR: arquitectura hexagonal aprobada antes del código, una sesión por feature con topes, compuertas de pruebas y seguridad, cierre documentado y presupuesto del límite de 5 h. El estado vive en archivos y en git, no en el chat: cualquier sesión puede retomar.
+Workflow de desarrollo, del repo vacío al PR: una sesión por feature con topes, camino corto para arreglos chicos, compuertas de pruebas, arquitectura y seguridad, cierre documentado y presupuesto del límite de 5 h. El estado vive en archivos y en git, no en el chat: cualquier sesión puede retomar.
 
 ```
 claude plugin install dev-flow@ai-env
 ```
+
+Requiere el plugin [`arch`](../arch/README.md), que se instala solo como dependencia: el diseño y su aprobación viven ahí, y este plugin verifica esa misma arquitectura al cerrar una feature o un arreglo.
 
 ## Cuándo usar qué
 
 | Situación | Skill |
 |---|---|
 | Repo nuevo o recién clonado | `/dev-flow:project-init` |
-| Programa, página o automatización nueva | `/dev-flow:arch-first` |
+| Programa, página o automatización nueva | `/arch:arch-first` |
 | Feature | `/dev-flow:feature-run` (de corrido) o `/dev-flow:feature-flow` (paso a paso) |
 | Arreglo puntual | `/dev-flow:quick-fix` |
 | Algo no se comporta como esperás | `/dev-flow:doctor` |
@@ -20,18 +22,16 @@ No hace falta recordar la etapa: al abrir una sesión en la rama o worktree de u
 
 ## Skills
 
-Todas las skills son manuales. Orden típico: `project-init` → `arch-first` → `feature-flow` o `feature-run` → `feature-close` → `pr-prep`. Para un arreglo puntual, `quick-fix`.
+Todas las skills son manuales. Orden típico: `project-init` → `arch:arch-first` → `feature-flow` o `feature-run` → `feature-close` → `pr-prep`. Para un arreglo puntual, `quick-fix`.
 
 | Skill | Activación | Qué hace |
 |---|---|---|
 | `project-init` | manual | Repo nuevo o clonado: detecta stack y scripts reales, completa `CLAUDE.md`, `docs/STATE.md` y `.gitignore` sin pisar nada, con `--settings` deja declarados el marketplace y los plugins en `.claude/settings.json` (cargan solos para quien clone el repo), con `--ci` agrega los workflows, y encadena `arch-first` |
-| `arch-first` | manual | Antes de escribir código de un programa, página o automatización: arquitectura hexagonal con puertos y seguridad por capa en `architecture.json` y `ARCHITECTURE.md`, vista previa (diagrama, carpetas, reglas), **aprobación humana con sello por hash** y recién después se habilita el código. El hook `arch-guard` bloquea código sin aprobar, fuera de las capas o que rompa la regla de dependencia; `arch-check.cjs` lo verifica en feature-close y en el CI (TypeScript/JavaScript, Python y PowerShell) |
 | `feature-flow` | manual | Parte un trabajo grande en hasta 3 features, crea `docs/features/<slug>/` con `SPEC.md`, `STATE.md` y `HANDOFF.md`, y te da el comando para retomarla en una sesión nueva. Abrir sesiones en segundo plano es opcional y tiene límites duros (ver abajo) |
 | `feature-run` | manual | Orquesta una feature de punta a punta: presupuesto, SPEC aprobado, implementación, pruebas, cierre con documentos y `PR.md`. `stage.cjs` dice en qué etapa está mirando archivos y git, así que se puede reanudar. Paradas: SPEC sin aprobar, sin presupuesto, tests rojos tras 2 intentos, push o PR sin tu sí |
 | `spec-interview` | manual | Te entrevista para definir una feature grande y escribe un `SPEC.md` autocontenido antes de implementar |
 | `budget-plan` | manual | Dice cuánto queda del límite de 5 h, estima cuánto necesita una feature (percentil 75 de las ya medidas) y propone ejecutar ahora, justo o dividida en rebanadas que entren en lo disponible. Mide solo: `rehydrate` inicia y `feature-close` cierra la medición |
 | `security-diff` | manual | Revisión de seguridad solo del diff: reglas deterministas sobre las líneas agregadas (secretos, TLS desactivado, ejecución dinámica, inyección, XSS, CORS abierto, permisos amplios, GUIDs, dependencias nuevas). Alta bloquea el cierre; un riesgo aceptado lo declara el usuario en el STATE |
-| `adr` | manual | Una página por decisión en `docs/decisions/` con índice automático; las decisiones marcadas `[ADR]` en el STATE se registran al cerrar la feature |
 | `feature-close` | manual | Cierra una feature en una corrida: corre typecheck, lint y test y una compuerta de pruebas (rechaza código cambiado sin ningún archivo de prueba, salvo `Sin pruebas: <motivo>` declarado en el STATE); escribe la entrada de `docs/CHANGELOG.md` y el diseño final de punta a punta en `docs/design/<slug>.md` desde los hechos del diff (`collect.cjs`); los valida (`verify.cjs`: secciones completas, rutas citadas que existan, sin GUIDs ni términos privados); arma `PR.md` (título y cuerpo desde lo verificado), marca el STATE como cerrado y commitea solo docs. No cierra si algo falla |
 | `pr-prep` | manual | Corre las verificaciones, revisa el diff contra las invariantes del proyecto y redacta la descripción del PR |
 | `quick-fix` | manual | Camino corto para arreglos chicos: un script decide con reglas fijas si el cambio califica (hasta 3 archivos y 60 líneas de código, sin tocar dependencias, infraestructura, identidad, esquema ni arquitectura) y corre las mismas compuertas de pruebas, arquitectura y seguridad. Si no califica, manda al flujo completo |
@@ -40,7 +40,6 @@ Todas las skills son manuales. Orden típico: `project-init` → `arch-first` �
 
 | Hook | Evento | Qué hace |
 |---|---|---|
-| `arch-guard` | Edit, Write | En carpetas con `architecture.json`: no deja escribir código sin arquitectura aprobada por la persona, ni fuera de las capas, ni con imports que rompan la regla de dependencia, ni sellar la aprobación por su cuenta |
 | `session-guard` | Bash, PowerShell | Bloquea que Claude abra sesiones por su cuenta y que corra `approve.cjs`; lanzar con `feature-flow` pide confirmación humana |
 | `rehydrate` | SessionStart | Tras `/compact` reinyecta `docs/STATE.md`; al arrancar en la rama o worktree de una feature inyecta su `HANDOFF.md` y `STATE.md`, **la etapa en la que está y el paso siguiente**, e inicia la medición de consumo. Si hay una arquitectura sin aprobar, lo avisa |
 | `stop-verify` | Stop | Si hubo cambios de código, corre `typecheck` y `lint` antes de dar el turno por terminado. Se apaga por repo con `{"stopVerify": false}` en `.claude/dev-flow.json` |
@@ -66,7 +65,7 @@ Podés bajar los topes en `.claude/feature-flow.json`; no subirlos por encima de
 
 ## Paradas humanas
 
-Hay cuatro puntos donde decide una persona y ningún script lo saltea: aprobar la arquitectura (`approve.cjs`, en tu terminal), aprobar el SPEC, declarar una exención (`Sin pruebas:` o `Riesgo aceptado:` en el STATE) y hacer push o abrir el PR.
+Hay cuatro puntos donde decide una persona y ningún script lo saltea: aprobar la arquitectura (plugin `arch`, en tu terminal), aprobar el SPEC, declarar una exención (`Sin pruebas:` o `Riesgo aceptado:` en el STATE) y hacer push o abrir el PR.
 
 ## Configuración por repo
 
@@ -74,6 +73,5 @@ Hay cuatro puntos donde decide una persona y ningún script lo saltea: aprobar l
 
 ## Límites
 
-- `arch-check` analiza imports con expresiones regulares, no con un parser. En TypeScript, JavaScript y Python cubre los casos comunes; en PowerShell es mejor esfuerzo.
 - `stop-verify` y las verificaciones de cierre usan `npm run typecheck|lint|test`. En repos sin `package.json` no corren (la infraestructura la verifica `cloud-ops`).
 - `budget-plan` necesita la statusline de ai-env y un plan Pro o Max; sin features medidas no estima.

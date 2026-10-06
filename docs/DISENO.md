@@ -7,15 +7,16 @@ Para quien mantiene o extiende ai-env. Lo que usa quien instala los plugins est�
 ```
 .claude-plugin/marketplace.json   catálogo: una entrada por plugin
 plugins/<plugin>/
-  .claude-plugin/plugin.json      nombre, descripción, metadatos (sin version)
+  .claude-plugin/plugin.json      nombre, versión, descripción, dependencias
   README.md                       qué trae, configuración, límites
   skills/<skill>/SKILL.md         instrucciones; scripts/, references/ y templates/ al lado
   hooks/hooks.json                qué script corre en qué evento
   hooks/*.cjs                     un archivo por hook; lib.cjs es copia de shared/
+  lib/                            copias de shared/ que usan los scripts del plugin
   agents/*.md                     subagentes
   evals/<caso>/                   prompt.md y graders/ para claude plugin eval
-shared/hooks-lib.cjs              fuente única de la librería de hooks
-scripts/                          check.cjs (chequeos previos al commit), sync-shared.cjs
+shared/                           fuente única de lo que usan dos o más plugins
+scripts/                          check.cjs, sync-shared.cjs, check-versions.cjs, release.cjs
 tests/                            smoke-test.js y fixtures
 install.ps1, install.sh           instalador de un comando
 docs/                             este archivo, PRUEBA-REAL.md, ejemplos de CLAUDE.md
@@ -26,10 +27,11 @@ docs/                             este archivo, PRUEBA-REAL.md, ejemplos de CLAU
 | Decisión | Motivo |
 |---|---|
 | Todo se distribuye como plugin | Un plugin se instala, actualiza y desinstala con la CLI; copiar archivos a cada repo no se actualiza solo y duplica hooks |
-| Cinco plugins por propósito | Quien solo quiere las protecciones instala `guard` sin cargar el workflow. `dev-flow` no se parte más porque sus scripts se llaman entre sí y un plugin instalado no puede leer archivos de otro |
-| Sin `version` en los manifiestos | Con `version` fija, nadie recibe un commit nuevo hasta que se la cambie. Sin ella, cada commit es una versión. Si el repo gana usuarios que necesiten estabilidad, el paso siguiente es versionar con tags `<plugin>--v<versión>` |
+| Seis plugins por propósito | Quien solo quiere las protecciones instala `guard`; quien solo quiere la disciplina de arquitectura, `arch`. `dev-flow` depende de `arch` y lo declara en `dependencies`, así se instala solo |
+| Ningún script sale de la carpeta de su plugin | Un plugin instalado no puede leer archivos de otro, y su ruta cambia con cada versión. Lo que comparten dos plugins vive en `shared/` y se copia. Una prueba recorre todos los `require` y `path.join(__dirname, ...)` y falla si alguno apunta afuera |
+| Entre plugins se comparte un contrato de datos, no código | `dev-flow` verifica la arquitectura leyendo `architecture.json` con su propia copia del verificador. No llama al plugin `arch` |
+| Versión semver por plugin y un tag por publicación | Quien instala recibe cambios cuando sube la versión, no por cada commit. `check-versions.cjs` falla si un plugin cambió respecto de su tag sin subir la versión, así que no hay cambios que no lleguen a nadie |
 | Hooks en Node, sin dependencias y sin red | Node ya es requisito de Claude Code, se comporta igual en Windows, macOS y Linux, y un hook sin dependencias se puede auditar leyéndolo |
-| `shared/hooks-lib.cjs` copiado a cada plugin | Un plugin instalado solo ve su propia carpeta. La copia se genera con `scripts/sync-shared.cjs` y una prueba falla si difiere |
 | Lo determinista va en scripts, lo redactado en skills | Decidir si un cambio es chico, si una arquitectura está aprobada o si un plan destruye datos no puede depender del criterio del modelo en ese momento |
 | Skills manuales por defecto | Una skill que se activa sola ocupa contexto en cada sesión y puede dispararse cuando no corresponde. Solo son automáticas las que tienen un disparador claro, y esas tienen eval |
 | Las aprobaciones las da una persona fuera de Claude | Aprobar la arquitectura, aceptar un riesgo o hacer push son decisiones con dueño. Los hooks impiden que Claude las tome |
@@ -51,6 +53,27 @@ Statusline, permisos (`permissions.deny`) y `CLAUDE.md` o `rules/`. Se resuelven
 - Un hook `Stop` bloquea como máximo una vez por turno (`stop_hook_active`).
 - En Windows `git` se ejecuta sin shell; `npm`, `az` y otros `.cmd` necesitan shell.
 
+## Qué vive en `shared/`
+
+| Fuente | Copias |
+|---|---|
+| `shared/hooks-lib.cjs` | `hooks/lib.cjs` de cada plugin con hooks |
+| `shared/arch/archlib.cjs`, `shared/arch/arch-check.cjs` | `plugins/arch/skills/arch-first/scripts/` y `plugins/dev-flow/lib/arch/` |
+| `shared/adr.cjs` | `plugins/arch/skills/adr/scripts/` y `plugins/dev-flow/lib/` |
+
+Se edita siempre la fuente y se corre `node scripts/sync-shared.cjs`. Editar una copia a mano hace fallar el hook de git y el CI. Un cambio en `shared/` cambia varios plugins a la vez: todos suben su versión.
+
+## Publicar una versión
+
+1. Hacé el cambio. `node scripts/check-versions.cjs` dice qué plugins cambiaron respecto de su última versión publicada.
+2. `node scripts/release.cjs <plugin>[,<plugin>] <patch|minor|major> "<qué cambia para quien lo usa>"`, o `--changed` para todos los que cambiaron. Sube la versión en `plugin.json` y agrega la entrada en `CHANGELOG.md`.
+   - `patch`: arreglo que no cambia el comportamiento esperado.
+   - `minor`: skill, hook o regla nueva; nada de lo anterior deja de funcionar.
+   - `major`: cambia cómo se invoca algo, se quita una skill o un hook bloquea algo que antes pasaba sin aviso.
+3. Commit y push a `main`. El workflow `release` crea y sube el tag `<plugin>--v<versión>` de cada versión nueva.
+
+No se reescribe una versión publicada: si algo salió mal, se publica otra.
+
 ## Agregar una skill
 
 1. `plugins/<plugin>/skills/<nombre>/SKILL.md` con `name` y `description`. La descripción dice **cuándo** usarla, no cómo funciona.
@@ -58,7 +81,7 @@ Statusline, permisos (`permissions.deny`) y `CLAUDE.md` o `rules/`. Se resuelven
 3. Los pasos que deben dar siempre el mismo resultado van en `scripts/*.cjs`, citados como `node "${CLAUDE_PLUGIN_ROOT}/skills/<nombre>/scripts/<script>.cjs"`, y se preaprueban con `allowed-tools`.
 4. Menos de 60 líneas. El detalle va en `references/`, que se lee solo cuando hace falta.
 5. Pruebas del script en `tests/smoke-test.js`. Si la skill es automática, un eval de disparo y uno negativo.
-6. Una fila en el README del plugin y una línea en `CHANGELOG.md`.
+6. Una fila en el README del plugin y la versión subida con `release.cjs`.
 
 ## Agregar un hook
 
@@ -66,18 +89,19 @@ Statusline, permisos (`permissions.deny`) y `CLAUDE.md` o `rules/`. Se resuelven
 2. Si el plugin no tenía hooks: `node scripts/sync-shared.cjs` para generar su `lib.cjs`.
 3. Pruebas en `tests/smoke-test.js`: un caso que bloquea, uno que pasa y el interruptor.
 4. Si corre procesos o escribe fuera del repo, actualizá `SECURITY.md`.
-5. Una fila en el README del plugin y un paso en `docs/PRUEBA-REAL.md`.
+5. Una fila en el README del plugin, un paso en `docs/PRUEBA-REAL.md` y la versión subida con `release.cjs`.
 
 ## Antes de commitear
 
 ```
 node scripts/sync-shared.cjs --check
+node scripts/check-versions.cjs
 node scripts/check.cjs
 node tests/smoke-test.js
-claude plugin validate .
+claude plugin validate --strict .
 ```
 
-`check.cjs` corre en el hook de git (`git config core.hooksPath .githooks`) y bloquea GUIDs, emails, secretos y los términos de `.private-terms`. El repo es público: sin nombres de cliente ni datos de tenant en ningún archivo.
+Los tres primeros corren en el hook de git (`git config core.hooksPath .githooks`). `check.cjs` bloquea GUIDs, emails, secretos y los términos de `.private-terms`. El repo es público: sin nombres de cliente ni datos de tenant en ningún archivo.
 
 Para probar sin instalar: `claude --plugin-dir plugins/guard --plugin-dir plugins/dev-flow`.
 

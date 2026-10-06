@@ -1,0 +1,22 @@
+name: release
+# Cuando un commit llega a main, crea el tag <plugin>--v<versión> de cada plugin cuya versión todavía no tiene tag.
+on:
+  push:
+    branches: [main]
+permissions: { contents: write }
+concurrency: { group: release, cancel-in-progress: false }
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0, fetch-tags: true }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: El versionado es coherente
+        run: node scripts/check-versions.cjs
+      - name: Crear y subir los tags que falten
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          node scripts/release.cjs --tag-missing --push

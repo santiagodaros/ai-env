@@ -12,4 +12,4 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
       - name: Regla de dependencia hexagonal (solo actúa si hay architecture.json)
-        run: node .ai-env/plugins/dev-flow/skills/arch-first/scripts/arch-check.cjs
+        run: node .ai-env/plugins/arch/skills/arch-first/scripts/arch-check.cjs

@@ -37,7 +37,7 @@ if (argv.includes('--settings')) {
     next.extraKnownMarketplaces = next.extraKnownMarketplaces || {};
     if (!next.extraKnownMarketplaces['ai-env']) next.extraKnownMarketplaces['ai-env'] = { source: { source: 'github', repo: 'santiagodaros/ai-env' }, autoUpdate: true };
     next.enabledPlugins = next.enabledPlugins || {};
-    for (const p of ['guard@ai-env', 'dev-flow@ai-env']) if (!(p in next.enabledPlugins)) next.enabledPlugins[p] = true;
+    for (const p of ['guard@ai-env', 'arch@ai-env', 'dev-flow@ai-env']) if (!(p in next.enabledPlugins)) next.enabledPlugins[p] = true;
     if (JSON.stringify(next) !== JSON.stringify(cur)) act('declarar el marketplace ai-env y activar guard y dev-flow en .claude/settings.json', () => { fs.mkdirSync(path.dirname(sf), { recursive: true }); fs.writeFileSync(sf, JSON.stringify(next, null, 2) + '\n'); });
   }
 }

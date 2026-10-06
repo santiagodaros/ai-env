@@ -49,7 +49,7 @@ const tg = testGate(files, state);
 // Arquitectura hexagonal (si el repo tiene architecture.json)
 let arq = null;
 try {
-  const ac = path.join(__dirname, '..', '..', 'arch-first', 'scripts', 'arch-check.cjs');
+  const ac = path.join(__dirname, '..', '..', '..', 'lib', 'arch', 'arch-check.cjs');
   if (fs.existsSync(ac)) { const r = run(process.execPath, [ac, '--json'], { cwd: root, shell: false }); const j = JSON.parse(r.stdout || '{}'); if (j.configs) arq = j.violations; }
 } catch { /* sin chequeo */ }
 // Seguridad sobre el diff
@@ -61,7 +61,7 @@ try {
 // ADR incompletos
 let adrBad = [];
 try {
-  const ad = path.join(__dirname, '..', '..', 'adr', 'scripts', 'adr.cjs');
+  const ad = path.join(__dirname, '..', '..', '..', 'lib', 'adr.cjs');
   if (fs.existsSync(ad) && fs.existsSync(path.join(root, 'docs', 'decisions'))) { const r = run(process.execPath, [ad, 'check', '--root', root], { cwd: root, shell: false }); if (r.status !== 0) adrBad = (r.stderr || '').split('\n').filter(l => l.startsWith('- ')); }
 } catch { /* sin chequeo */ }
 const adrPend = ((read('STATE.md').match(/^-\s*\[ADR\].*$/gim)) || []);

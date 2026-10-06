@@ -1,5 +1,6 @@
 {
   "name": "guard",
+  "version": "1.0.0",
   "description": "Hooks de protección que funcionan en cualquier repo: archivos protegidos y secretos, lectura de .env y comandos destructivos (git, rm, Azure, Terraform).",
   "author": {
     "name": "ai-env contributors",

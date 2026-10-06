@@ -1,15 +1,20 @@
 #!/usr/bin/env node
-// PreToolUse (Edit|Write|MultiEdit): hace cumplir arch-first antes de que se escriba código.
-// Solo actúa en carpetas con architecture.json. Bloquea (exit 2) si:
+// PreToolUse: hace cumplir arch-first antes de que se escriba código. Solo actúa en carpetas con architecture.json.
+// Edit|Write|MultiEdit: bloquea si
 //  - la arquitectura no está aprobada (sello humano con hash) y se escribe código;
 //  - el archivo de código queda fuera de las capas declaradas;
 //  - el código nuevo rompe la regla de dependencia o usa infraestructura/entorno donde no corresponde;
-//  - Claude intenta sellar la aprobación por su cuenta.
+//  - Claude intenta sellar la aprobación editando ARCHITECTURE.md.
+// Bash|PowerShell: bloquea que Claude corra approve.cjs. La aprobación la da la persona en su terminal.
 const path = require('path');
 const { run, block, projectDir } = require('./lib.cjs');
 
 run('arch-guard', (input) => {
   const ti = input.tool_input || {}, cwd = projectDir(input);
+  if (typeof ti.command === 'string') {
+    if (/arch-first[\\/]scripts[\\/]approve\.cjs/.test(ti.command)) block('la aprobación de la arquitectura la da la persona. Pedile que corra approve.cjs en su terminal.', 'approve-by-claude');
+    return;
+  }
   const target = ti.file_path; if (!target) return;
   let L; try { L = require(path.join(__dirname, '..', 'skills', 'arch-first', 'scripts', 'archlib.cjs')); } catch { return; }
   const abs = path.resolve(cwd, target);
@@ -20,7 +25,7 @@ run('arch-guard', (input) => {
   if (/(^|\/)ARCHITECTURE\.md$/.test(rel) && /^(Estado:\s*aprobada|Aprobada-hash:)/im.test(text)) block('la aprobación de la arquitectura la da la persona con scripts/approve.cjs, no Claude.', 'seal-by-claude');
   if (!L.isCode(rel) || L.allowedOutside(cfg, rel)) return;
   const st = L.approvalState(cfg);
-  if (!st.approved) block(`no se escribe código antes de aprobar la arquitectura (${st.reason}). Corré /dev-flow:arch-first, mostrá el preview y pedile al usuario que la apruebe con approve.cjs.`, 'unapproved');
+  if (!st.approved) block(`no se escribe código antes de aprobar la arquitectura (${st.reason}). Corré /arch:arch-first, mostrá el preview y pedile al usuario que la apruebe con approve.cjs.`, 'unapproved');
   const layer = L.layerOf(cfg, rel);
   if (!layer) block(`${rel} queda fuera de las capas declaradas en architecture.json (${Object.values(cfg.layers).map((l) => l.paths.join(',')).join(' | ')}). Ubicalo en una capa o cambiá el diseño y volvé a aprobarlo.`, 'outside-layers');
   const v = L.checkText(cfg, rel, text);

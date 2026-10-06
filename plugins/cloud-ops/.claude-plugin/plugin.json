@@ -1,5 +1,6 @@
 {
   "name": "cloud-ops",
+  "version": "1.0.0",
   "description": "Trabajo en Azure: verificación de afirmaciones contra Microsoft Learn (incluye su servidor MCP), inventario con Resource Graph (KQL), revisión de planes de Terraform y what-if de Bicep antes de aplicar, verificación de Terraform, Bicep y PowerShell al terminar, entregables a cliente y registro de estado.",
   "author": {
     "name": "ai-env contributors",
