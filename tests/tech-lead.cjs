@@ -147,7 +147,9 @@ module.exports = function techLead({ check, add, run }) {
     const rm = hookRun('remove', { cwd: r3, name: 'other name/raro' });
     let aliveAfter = true;
     try { process.kill(sleeper.pid, 0); } catch { aliveAfter = false; }
+    // Un hijo terminado y sin cosechar queda zombi: kill(pid, 0) igual responde. Se mira su estado.
     try { if (/\) Z /.test(fs.readFileSync(`/proc/${sleeper.pid}/stat`, 'utf8'))) aliveAfter = false; } catch { /* sin /proc o ya no existe */ }
+    if (aliveAfter && process.platform === 'darwin') { const ps = spawnSync('ps', ['-o', 'stat=', '-p', String(sleeper.pid)], { encoding: 'utf8' }); if (!ps.stdout.trim() || /Z/.test(ps.stdout)) aliveAfter = false; }
     check('worktree: al borrar cierra los procesos con el directorio adentro y poda', rm.code === 0 && !fs.existsSync(path.join(wtRoot, 'wt', 'other-name-raro')) && !aliveAfter && /cerré 1 proceso/.test(rm.err), rm.err);
     try { process.kill(sleeper.pid, 'SIGKILL'); } catch { /* ya terminó */ }
   } else add('AVISO', 'worktree: cierre de procesos no probado en Windows en la prueba de humo', 'se prueba en la sesión real (docs/PRUEBA-REAL.md)');
