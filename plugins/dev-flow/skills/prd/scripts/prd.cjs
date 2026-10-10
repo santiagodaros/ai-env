@@ -7,6 +7,7 @@
 //   node prd.cjs init   [--prd ...]          (crea el esqueleto si no existe)
 // Formato: cada requerimiento es un encabezado con id estable: "## [F-03] Exportar costos" (también "### F-03 - ...").
 // Prefijos: G = global (restricciones, stack: va en TODAS las rebanadas), F = funcional, NF = no funcional, o los que uses.
+// Líneas opcionales por sección: "Archivos: a, b", "Depende de: F-01", "Tamaño: S|M|L", "Fuera de alcance: ...".
 // La rebanada lleva: la sección pedida, las secciones G-*, las secciones que esa cita por id (un nivel) y las
 // decisiones de los ADR citados (docs/decisions/NNNN-*.md). Es determinista: no resume ni inventa.
 'use strict';
@@ -40,6 +41,12 @@ function parse(text) {
     s.text = lines.slice(s.start, s.end).join('\n').trim();
     s.line = s.start + 1;
     s.criteria = (s.text.match(/^\s*[-*]\s+\[[ xX]\]\s+.+$/gm) || []).map((x) => x.replace(/^\s*[-*]\s+\[[ xX]\]\s+/, '').trim());
+    // Brief completo para el worker: qué archivos toca, de qué depende, tamaño y qué queda afuera.
+    const meta = (re) => ((s.text.match(re) || [])[1] || '').trim();
+    s.files = meta(/^\s*Archivos:\s*(.+)$/im).split(',').map((x) => x.trim().replace(/^`|`$/g, '')).filter(Boolean);
+    s.deps = [...meta(/^\s*Depende de:\s*(.+)$/im).matchAll(/\b([A-Z]{1,4}-\d{1,4})\b/g)].map((m) => m[1]);
+    s.size = (meta(/^\s*Tama(?:ñ|n)o:\s*([SML])\b/im) || '').toUpperCase() || null;
+    s.outOfScope = meta(/^\s*Fuera de alcance:\s*(.+)$/im);
   }
   return { lines, secs };
 }
@@ -82,7 +89,7 @@ function slice(root, prdRel, id) {
   if (missing.length) parts.push('', `> Aviso: la sección cita ids que no existen en el PRD: ${missing.join(', ')}.`);
   const text = parts.join('\n').replace(/\n{3,}/g, '\n\n') + '\n';
   const full = fs.readFileSync(path.join(root, prdRel), 'utf8');
-  return { id, title: target.title, criteria: target.criteria, refs: refs.map((r) => r.id), globals: globals.map((g) => g.id), adrs: adrs.length, missing, text, chars: text.length, prdChars: full.length };
+  return { id, title: target.title, criteria: target.criteria, files: target.files, deps: target.deps, size: target.size, outOfScope: target.outOfScope, refs: refs.map((r) => r.id), globals: globals.map((g) => g.id), adrs: adrs.length, missing, text, chars: text.length, prdChars: full.length };
 }
 
 function check(root, prdRel) {
@@ -93,6 +100,8 @@ function check(root, prdRel) {
   for (const s of secs) {
     for (const r of refsOf(s.text)) if (!seen[r]) errors.push(`${s.id} cita ${r}, que no existe`);
     if (/^F-/.test(s.id) && !s.criteria.length) warnings.push(`${s.id} no tiene criterios de aceptación (casillas "- [ ] ...")`);
+    for (const d of s.deps) if (!seen[d]) errors.push(`${s.id} depende de ${d}, que no existe`);
+    if (/^F-/.test(s.id) && !s.files.length) warnings.push(`${s.id} no declara "Archivos:" (sin alcance no se puede lanzar en paralelo)`);
     if (s.text.length > 6000) warnings.push(`${s.id} tiene ${s.text.length} caracteres: partila (un ticket debería entrar en una rebanada chica)`);
   }
   if (!secs.length) errors.push('el PRD no tiene ninguna sección con id ("## [F-01] Título")');
@@ -119,6 +128,10 @@ Las secciones G-* van en todas las rebanadas: mantenelas cortas.
 Objetivo en una línea.
 
 Detalle: (completar). Cumple G-02 y NF-01.
+
+Archivos: src/(completar), tests/(completar)
+Tamaño: S
+Fuera de alcance: (lo que este ticket NO hace)
 
 Criterios de aceptación:
 - [ ] (comportamiento verificable)

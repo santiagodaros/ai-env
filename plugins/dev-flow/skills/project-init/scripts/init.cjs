@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // Aplicación segura e idempotente de lo que project-init puede hacer sin criterio humano. Nunca pisa texto existente.
 // Uso: node init.cjs [--dir <repo>] [--apply] [--settings] [--ci] [--agents]   (sin --apply muestra qué haría)
-//   --agents    forma de trabajo Tech Lead + workers: .claude/dev-flow.json, docs/PRD.md, docs/ESTADO.md,
-//               docs/CHANGELOG.md, bloque de CLAUDE.md, .claude/prompts/ y .worktreeinclude (nada se pisa)
+//   --agents    forma de trabajo Tech Lead + workers: .claude/dev-flow.json (con lead-guard), docs/PRD.md, docs/ESTADO.md,
+//               docs/CHANGELOG.md, AGENTS.md (mapa), docs/conventions.md, docs/verification.md, bloque de CLAUDE.md
+//               que importa AGENTS.md, .claude/prompts/ y .worktreeinclude (nada se pisa)
 //   --settings  declara el marketplace ai-env y activa guard + dev-flow en .claude/settings.json (para todo el que clone el repo)
 //   --ci        agrega los workflows de arquitectura y seguridad y dependabot, si no existen
 const fs = require('fs'), path = require('path');
@@ -21,18 +22,15 @@ const gi = read('.gitignore') || '';
 const miss = want.filter(w => !gi.split(/\r?\n/).includes(w));
 if (miss.length) act(`agregar a .gitignore: ${miss.join(', ')}`, () => fs.appendFileSync(path.join(dir, '.gitignore'), (gi && !gi.endsWith('\n') ? '\n' : '') + '# Claude Code: estado local\n' + miss.join('\n') + '\n'));
 // Forma de trabajo Tech Lead + workers (orquestador headless, PRD como fuente de verdad, GitHub como bus)
-const agentsBlock = ['<!-- agents:start -->', '## Forma de trabajo: Tech Lead y workers',
-  '- La sesión principal es el **Tech Lead**: analiza, parte en tickets (`/dev-flow:prd`, `/dev-flow:ticket`), lanza workers (`/dev-flow:dispatch`) y audita. No escribe código de aplicación.',
-  '- Fuente de verdad: `docs/PRD.md`, con ids estables (`## [F-03] ...`). Ningún worker recibe el PRD completo: recibe el issue con su rebanada.',
-  '- Workers efímeros y en frío: `implementer`, `auditor`, `sre`, `docs`. Cada uno en su worktree y su rama (`feat/<N>-<slug>`, `fix/<N>-<slug>`), un ticket por vez.',
-  '- El estado vive en GitHub (issues, PRs con `Closes #N`, checks) y en `docs/ESTADO.md` (`estado.cjs --write`); el historial, en `docs/CHANGELOG.md`.',
-  '- Zero-trust: quien implementa no audita. El implementador entrega la tarjeta (JSON validado); el auditor, sin permiso de edición, devuelve un veredicto. Las pruebas tienen que fallar sin el cambio (`test-honesty`).',
+const agentsBlock = ['<!-- agents:start -->', '## Forma de trabajo: Tech Lead y workers', '',
+  '@AGENTS.md', '',
+  '- Esta sesión es el **Tech Lead**: analiza, parte en tickets (`/dev-flow:prd`, `/dev-flow:ticket`), lanza workers (`/dev-flow:dispatch`) y audita. No edita código de aplicación (el hook `lead-guard` lo impide en el checkout principal).',
+  '- Estado en GitHub (issues, PRs con `Closes #N`, checks) y en `docs/ESTADO.md`; el hilo de cada ticket, en `.dev-flow/tickets/<N>/` y, al cerrarlo, en `docs/tickets/<N>.md`.',
   '- Merge: lo decide una persona, con veredicto `aprobar` y checks verdes.',
-  '- Reglas del proyecto para cada rol: `.claude/prompts/<rol>.md` (se suman a las del plugin).',
   '<!-- agents:end -->', ''].join('\n');
 if (argv.includes('--agents')) {
   const cfgF = path.join(dir, '.claude', 'dev-flow.json');
-  if (!fs.existsSync(cfgF)) act('crear .claude/dev-flow.json (PRD, ESTADO, worktrees en ~/worktrees, topes para workers)', () => { fs.mkdirSync(path.dirname(cfgF), { recursive: true }); fs.writeFileSync(cfgF, JSON.stringify({ prd: 'docs/PRD.md', state: 'docs/ESTADO.md', worktrees: { root: '~/worktrees' }, launch: { maxConcurrent: 3, maxPerDay: 12, cooldownMinutes: 2 }, workers: { mode: 'headless', permissionMode: 'auto', maxTurns: 80 } }, null, 2) + '\n'); });
+  if (!fs.existsSync(cfgF)) act('crear .claude/dev-flow.json (PRD, ESTADO, worktrees en ~/worktrees, topes para workers)', () => { fs.mkdirSync(path.dirname(cfgF), { recursive: true }); fs.writeFileSync(cfgF, JSON.stringify({ prd: 'docs/PRD.md', state: 'docs/ESTADO.md', lead: { enforce: true }, worktrees: { root: '~/worktrees' }, launch: { maxConcurrent: 3, maxPerDay: 12, cooldownMinutes: 2 }, workers: { mode: 'headless', permissionMode: 'auto', maxTurns: 80 } }, null, 2) + '\n'); });
   if (read('docs/PRD.md') === null) act('crear docs/PRD.md con el esqueleto (G-01, G-02, NF-01, F-01)', () => { fs.mkdirSync(path.join(dir, 'docs'), { recursive: true }); fs.writeFileSync(path.join(dir, 'docs', 'PRD.md'), require('../../prd/scripts/prd.cjs').SKELETON); });
   if (read('docs/ESTADO.md') === null) act('crear docs/ESTADO.md con el bloque generado (estado.cjs --write lo completa desde GitHub)', () => { fs.mkdirSync(path.join(dir, 'docs'), { recursive: true }); fs.writeFileSync(path.join(dir, 'docs', 'ESTADO.md'), '# Estado\n\n## Decisiones\n- \n\n## Estado generado\n\n<!-- estado:start -->\n(correr estado.cjs --write)\n<!-- estado:end -->\n'); });
   if (read('docs/CHANGELOG.md') === null) act('crear docs/CHANGELOG.md', () => { fs.mkdirSync(path.join(dir, 'docs'), { recursive: true }); fs.writeFileSync(path.join(dir, 'docs', 'CHANGELOG.md'), '# Historial de cambios\n\n## Sin publicar\n'); });
@@ -40,6 +38,10 @@ if (argv.includes('--agents')) {
     const pd = path.join(dir, '.claude', 'prompts'); fs.mkdirSync(pd, { recursive: true });
     for (const r of ['implementer', 'auditor', 'sre', 'docs']) fs.writeFileSync(path.join(pd, `${r}.md`), `# Reglas del proyecto para el rol ${r}\n\nSe suman a las del plugin dev-flow (no las reemplazan). Solo lo propio de este repo: convenciones, carpetas prohibidas, comandos especiales.\n\n- \n`);
   });
+  const T = path.join(__dirname, '..', 'templates', 'agents');
+  for (const f of ['AGENTS.md', 'docs/conventions.md', 'docs/verification.md']) {
+    if (read(f) === null) act(`crear ${f}${f === 'AGENTS.md' ? ' (mapa del repo para agentes; CLAUDE.md lo importa)' : ''}`, () => { fs.mkdirSync(path.dirname(path.join(dir, f)), { recursive: true }); fs.copyFileSync(path.join(T, f), path.join(dir, f)); });
+  }
   if (read('.worktreeinclude') === null) act('crear .worktreeinclude (archivos ignorados por git que se copian a cada worktree; vacío por defecto)', () => fs.writeFileSync(path.join(dir, '.worktreeinclude'), '# Un patrón por línea, como .gitignore. Ojo: lo que pongas acá (p. ej. .env) se copia a cada worktree.\n# .env\n'));
   const cm0 = read('CLAUDE.md');
   if (cm0 === null || !cm0.includes('<!-- agents:start -->')) act('agregar a CLAUDE.md el bloque "Forma de trabajo: Tech Lead y workers"', () => { const cur = read('CLAUDE.md'); fs.writeFileSync(path.join(dir, 'CLAUDE.md'), cur === null ? `# ${path.basename(dir)}\n\n${agentsBlock}` : cur + (cur.endsWith('\n') ? '\n' : '\n\n') + agentsBlock); });

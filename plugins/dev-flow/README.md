@@ -39,7 +39,7 @@ Todas las skills son manuales. Orden típico: `project-init` → `arch:arch-firs
 | `setup` | manual | Una vez por máquina: instala la statusline (única fuente del límite de 5 h) y activa la actualización automática. Simula antes de escribir, deja copia `.bak` y no reemplaza una statusline ajena sin `--force-statusline` |
 | `prd` | manual | El PRD como fuente de verdad en rebanadas: `list`, `check` (ids repetidos, citas rotas, F- sin criterios) y `slice <ID>`, que devuelve la sección más las globales `G-*`, las secciones citadas y la decisión de los ADR citados. Determinista |
 | `ticket` | manual | GitHub como bus: `create <ID>` arma el issue con la rebanada, criterios y contrato de entrega (sin duplicar); `claim`, `context`, `pr <N> --card` (con `Closes #N`), `status`; `estado.cjs --write` regenera el estado del proyecto desde GitHub y el PRD entre marcas |
-| `dispatch` | manual | Modo Tech Lead: lanza un worker (`implementer`, `sre`, `docs`, `auditor`) por ticket, en frío, en su worktree, con `claude -p` y la tarjeta (o el veredicto) validada por `--json-schema`; `status` y `collect`. Topes y registro compartidos con `feature-flow`; cada lanzamiento pide confirmación |
+| `dispatch` | manual | Modo Tech Lead: lanza workers (`implementer`, `sre`, `docs`, `auditor`; `explorer` en sesión) por ticket, en frío, en su worktree, con `claude -p`, salida validada por `--json-schema`, tamaño S/M/L (modelo, turnos, esfuerzo), lotes paralelos de tickets independientes, reanudación (`resume`), expediente por ticket, plan de oleadas, métricas (`stats`) y memoria por rol con aprobación. Antes de lanzar corre `harness.cjs check --pre` |
 | `audit` | automática | Auditoría zero-trust de una rama o PR: revisión determinista del diff (timeouts, inyección, esquemas, `.only`/`.skip`, aserciones triviales, mocks del sujeto), escáner de seguridad, **honestidad de las pruebas** (deben fallar sin el cambio) y contraste de la tarjeta con el repo |
 | `doctor` | manual | Diagnóstico de solo lectura: herramientas, plugins activos, auto-update, statusline, foto de consumo, interruptores, scripts de verificación y estado de la arquitectura. Con `stats`, qué regla de qué hook bloqueó o pidió confirmación y cuántas veces |
 
@@ -47,8 +47,28 @@ Todas las skills son manuales. Orden típico: `project-init` → `arch:arch-firs
 |---|---|---|
 | `session-guard` | Bash, PowerShell | Bloquea que Claude abra sesiones por su cuenta; lanzar con `feature-flow` pide confirmación humana. Que Claude no corra `approve.cjs` lo controla `arch-guard`, del plugin `arch` |
 | `rehydrate` | SessionStart | Tras `/compact` reinyecta `docs/STATE.md`; al arrancar en la rama o worktree de una feature inyecta su `HANDOFF.md` y `STATE.md`, **la etapa en la que está y el paso siguiente**, e inicia la medición de consumo. El aviso de arquitectura sin aprobar lo da `arch-start`, del plugin `arch` |
+| `lead-guard` | Edit, Write, MultiEdit, NotebookEdit | Con `lead.enforce`, la sesión principal no edita código en el checkout principal (sí docs, PRD, estado y todo lo de un worktree). No aplica a los workers |
+| `lead-notify` | UserPromptSubmit | Una línea por worker que terminó desde el último mensaje, con cómo recogerlo. Solo lee `.dev-flow/runs` |
 | `worktree` | WorktreeCreate, WorktreeRemove | Worktrees de subagentes (y de `claude -w` con `setup --worktrees`, o los de `dispatch`): fuera del repo si `worktrees.root` lo pide, rama de ticket (`feat-12-x` → `feat/12-x`), copia de `.worktreeinclude`; al borrar cierra solo los procesos con el directorio adentro (nunca "todos los node") y reintenta ante EPERM. Idempotente. `node hooks/worktree.cjs gc [--apply]` limpia los ya mergeados |
 | `stop-verify` | Stop | Si hubo cambios de código, corre `typecheck` y `lint` antes de dar el turno por terminado. Se apaga por repo con `{"stopVerify": false}` en `.claude/dev-flow.json` |
+
+## Arnés: memoria, verificación y mejora continua
+
+Basado en [cómo Anthropic construyó su sistema multiagente](https://www.anthropic.com/engineering/multi-agent-research-system) y en el patrón líder-trabajador-revisor con estado en disco:
+
+| Pieza | Dónde | Qué resuelve |
+|---|---|---|
+| **Expediente por ticket** | `.dev-flow/tickets/<N>/` (`brief`, `progress` que el worker escribe mientras trabaja en su worktree y el arnés copia, `log` de corridas, informes `impl-k`/`audit-k`, `explore-*`, `index.md` generado) | El siguiente worker lee un resumen de ~40 líneas, no el código entero; un retrabajo arranca con los hallazgos del auditor |
+| **Resumen versionable** | `docs/tickets/<N>.md`, commiteado por `ticket.cjs pr` | El "por qué" sobrevive en git y viaja con el PR |
+| **Mapa del código** | `docs/codemap.md` (`codemap.cjs`, determinista; las notas de los explorers se conservan) | El brief trae solo el pedazo del mapa del alcance |
+| **Memoria por rol** | `.dev-flow/memory/<rol>.md` (lecciones aprobadas; `memory propose` las sugiere desde los veredictos) | Lo que se aprende entre tickets, sin que un worker pueda envenenarla |
+| **Verificación de entrada y de cierre** | `harness.cjs check --pre/--worker/--end` | No se lanza sobre una base rota; un worker no arranca con pruebas ya rojas; checkpoints objetivos del estado final |
+| **El Tech Lead no edita código** | hook `lead-guard` (con `lead.enforce`) | Hecho cumplir por ruta, no por instrucciones |
+| **Reanudar** | `--session-id` + `progress.md` + `dispatch resume` | Una corrida cortada sigue desde el último paso |
+| **Versión fijada por corrida** | copia del plugin en la carpeta de la corrida | Una actualización a mitad de camino no rompe a nadie |
+| **Solo referencias al Tech Lead** | `collect`/`status` en una línea; `lead-notify` avisa lo que terminó | Su contexto no se llena con tarjetas ni diffs |
+| **Observabilidad sin contenido** | `.dev-flow/metrics.jsonl` + `dispatch stats` | Costo, turnos, cortes, retrabajo, permisos denegados y hallazgos repetidos |
+| **Evals del flujo completo** | `evals/harness/run.cjs` (repo de ai-env) | Casos con trampas evaluados por el resultado final |
 
 ## Tech Lead + workers
 
@@ -62,7 +82,7 @@ La sesión principal orquesta y no escribe código de aplicación. El ciclo, con
 6. `dispatch.cjs run --pr 34 --role auditor --launch`: auditor sin permiso de edición (modelo opus), con `audit.cjs`, `test-honesty` y `card verify`. Devuelve un veredicto validado. El merge lo decide una persona.
 7. `estado.cjs --write` y `worktree.cjs gc --apply`.
 
-Los roles son también subagentes del plugin (`dev-flow:implementer`, `auditor`, `sre`, `docs`) para delegar algo chico sin abrir sesiones. Reglas del proyecto por rol en `.claude/prompts/<rol>.md` (se suman). Verificado de punta a punta con Claude Code 2.1.296 en Linux (implementador → tarjeta → PR → auditor, US$ 0,99 en total para un ticket chico).
+Los roles son también subagentes del plugin (`dev-flow:implementer`, `auditor`, `sre`, `docs`, `explorer`) para delegar algo chico sin abrir sesiones; los explorers se lanzan varios en paralelo y devuelven solo la ruta de sus hallazgos. Reglas del proyecto por rol en `.claude/prompts/<rol>.md` (se suman). Verificado de punta a punta con Claude Code 2.1.296 en Linux (implementador → tarjeta → PR → auditor, US$ 0,99 en total para un ticket chico).
 
 Configuración del repo en `.claude/dev-flow.json` (la crea `project-init --agents`): `prd`, `state` (p. ej. `docs/ESTADO.md`), `worktrees.root` (p. ej. `~/worktrees`), `launch` (topes), `workers` (`mode`, `permissionMode` —por defecto `auto`: el clasificador aprueba lo seguro y los hooks de `guard` siguen frenando lo peligroso; con `acceptEdits` los comandos compuestos se deniegan—, `allowedTools`, `maxTurns`), `testCommand`, `labels`. Lo que generan las corridas va a `.dev-flow/` (ignorado por git; fuera de `.claude/`, que Claude Code protege de escrituras).
 

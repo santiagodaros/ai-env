@@ -167,7 +167,16 @@ claude
 | 5c.9 | Mergeá el PR en GitHub, `git pull` y `node <carpeta de dev-flow>\hooks\worktree.cjs gc --apply` | Borra el worktree y la rama local del ticket ya mergeado |
 | 5c.10 | `node <carpeta de dev-flow>\skills\ticket\scripts\estado.cjs --write` | `docs/ESTADO.md` con cobertura del PRD 1/1 y el PR mergeado |
 
-- [ ] 5c.1 - [ ] 5c.2 - [ ] 5c.3 - [ ] 5c.4 - [ ] 5c.5 - [ ] 5c.6 - [ ] 5c.7 - [ ] 5c.8 - [ ] 5c.9 - [ ] 5c.10
+| 5c.11 | Con `lead.enforce: true` en `.claude/dev-flow.json`, pedile a la sesión Tech Lead que edite `src/` directamente | `lead-guard` lo bloquea en el checkout principal y sugiere lanzar un worker; dentro de un worktree sí deja |
+| 5c.12 | Lanzá un implementer con `--max-turns 3` y, cuando `status` lo marque reanudable, `dispatch.cjs resume --run <id> --launch` | Retoma la misma sesión en el mismo worktree y sigue desde `.dev-flow/ticket/progress.md`; no rehace lo commiteado |
+| 5c.13 | Mientras corre un worker, mandá cualquier mensaje a la sesión Tech Lead; esperá a que termine y mandá otro | Mientras corre, nada. Al terminar, una línea "Workers que terminaron…" con la tarjeta o el veredicto y el `collect` a correr, una sola vez |
+| 5c.14 | Después del `collect`, `Get-Content .dev-flow\tickets\1\index.md` | Índice de ~40 líneas: estado, criterios, decisiones, archivos, hallazgos abiertos y siguiente paso (de `progress.md` del worktree) |
+| 5c.15 | Dos tickets con `Archivos:` distintos y sin `Depende de:`: `dispatch.cjs run --issues 1,2 --role implementer --launch` | Una sola confirmación; dos workers en paralelo. Si comparten un archivo o uno depende del otro, el dry-run lo rechaza y dice por qué |
+| 5c.16 | `dispatch.cjs stats` y `dispatch.cjs memory propose` | Costo, turnos, cortes, retrabajo y permisos denegados por rol; lecciones sugeridas que **no** se aplican solas |
+
+- [ ] 5c.1 - [ ] 5c.2 - [ ] 5c.3 - [ ] 5c.4 - [ ] 5c.5 - [ ] 5c.6 - [ ] 5c.7 - [ ] 5c.8 - [ ] 5c.9 - [ ] 5c.10 - [ ] 5c.11 - [ ] 5c.12 - [ ] 5c.13 - [ ] 5c.14 - [ ] 5c.15 - [ ] 5c.16
+
+Las evals del arnés (`node evals/harness/run.cjs` desde el repo de ai-env, ~US$ 1,5 las cinco) cubren con workers reales lo que no se ve a mano: tarjeta honesta, criterios contradictorios, SQL interpolado, prueba complaciente y un cambio limpio que tiene que aprobarse. En Windows, correlas una vez y anotá cuántas pasan.
 
 En 5c.5 anotá el costo que informa `status` y si el worker tuvo que pedir algún permiso (en headless no puede: si se trabó, ajustá `workers.allowedTools` o `workers.permissionMode` en `.claude/dev-flow.json`). En 5c.8, si queda algo trabado, anotá qué proceso era (`Get-Process | Where-Object Path -like "*worktrees*"`).
 

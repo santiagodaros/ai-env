@@ -580,7 +580,7 @@ for (const [plug, skills] of Object.entries(expected)) {
   check(`${plug}: ${skills.length} skills con frontmatter`, miss.length === 0);
 }
 for (const a of ['reviewer', 'explorer']) check(`app-review: subagente ${a}`, fm(path.join(P, 'app-review', 'agents', `${a}.md`)));
-for (const a of ['implementer', 'auditor', 'sre', 'docs']) check(`dev-flow: subagente ${a}`, fm(path.join(P, 'dev-flow', 'agents', `${a}.md`)));
+for (const a of ['implementer', 'auditor', 'sre', 'docs', 'explorer']) check(`dev-flow: subagente ${a}`, fm(path.join(P, 'dev-flow', 'agents', `${a}.md`)));
 {
   // YAML del frontmatter: un valor sin comillas no puede llevar ": " ni " #" (rompe el parseo y Claude Code ignora
   // todos los campos, incluidos disable-model-invocation y paths).
@@ -902,6 +902,12 @@ process.exit(0);`);
 
 // --- dev-flow: forma de trabajo Tech Lead + workers
 require('./tech-lead.cjs')({
+  check, add,
+  run: (script, argv = [], o = {}) => { const r = spawnSync(process.execPath, [script, ...argv], { encoding: 'utf8', cwd: o.cwd, env: { ...process.env, ...o.env } }); lastOut = `${r.stdout || ''}${r.stderr || ''}`; return { code: r.status, out: lastOut }; },
+});
+
+// --- dev-flow: arnés (expediente, harness check, lead-guard, reanudar, lotes, métricas, plan, memoria, codemap)
+require('./harness.cjs')({
   check, add,
   run: (script, argv = [], o = {}) => { const r = spawnSync(process.execPath, [script, ...argv], { encoding: 'utf8', cwd: o.cwd, env: { ...process.env, ...o.env } }); lastOut = `${r.stdout || ''}${r.stderr || ''}`; return { code: r.status, out: lastOut }; },
 });

@@ -27,17 +27,29 @@ const L = cfg.labels;
 const git = (a) => spawnSync('git', a, { cwd: root, encoding: 'utf8' });
 const slugify = (t) => t.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/^\[?[a-z]{1,4}-\d{1,4}\]?\s*/, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').split('-').slice(0, 5).join('-') || 'ticket';
 const tmpFile = (name, text) => { const f = path.join(os.tmpdir(), `dev-flow-${process.pid}-${name}`); fs.writeFileSync(f, text); return f; };
-const COLORS = { [L.ready]: '0e8a16', [L.doing]: 'fbca04', [L.review]: '1d76db', [L.blocked]: 'b60205', 'tipo:feat': 'c5def5', 'tipo:fix': 'f9d0c4' };
+const COLORS = { 'tamaño:S': 'bfdadc', 'tamaño:M': '7fc8cf', 'tamaño:L': '2b7a87', [L.ready]: '0e8a16', [L.doing]: 'fbca04', [L.review]: '1d76db', [L.blocked]: 'b60205', 'tipo:feat': 'c5def5', 'tipo:fix': 'f9d0c4' };
 
 function ensureLabels(names) {
   for (const n of names) gh(['label', 'create', n, '--force', '--color', COLORS[n] || (n.startsWith('prd:') ? 'ededed' : 'cccccc')], { allowFail: true });
 }
 
+function depIssues(deps) {
+  return deps.map((d) => {
+    const l = ghJson(['issue', 'list', '--label', `prd:${d}`, '--state', 'all', '--json', 'number,state']) || [];
+    return l.length ? `- #${l[0].number} (${d}${l[0].state === 'CLOSED' ? ', cerrado' : ''})` : `- ${d} (todavía sin ticket: crealo antes)`;
+  });
+}
+
 function issueBody(s, type) {
   const crit = s.criteria.length ? s.criteria.map((c) => `- [ ] ${c}`).join('\n') : '- [ ] (el PRD no trae criterios para esta sección: definilos antes de implementar)';
+  const scope = s.files && s.files.length ? s.files.map((f) => `- \`${f}\``).join('\n') : '- (sin declarar: agregá "Archivos:" en la sección del PRD)';
   return [
     s.text.trim(), '', '---', '',
     '## Criterios de aceptación', '', crit, '',
+    '## Alcance (archivos que puede tocar)', '', scope, '',
+    '## Fuera de alcance', '', `- ${s.outOfScope || 'Todo lo que no esté en los criterios. Lo que aparezca de más va a otro ticket.'}`, '',
+    ...(s.deps && s.deps.length ? ['## Dependencias', '', ...depIssues(s.deps), ''] : []),
+    '## Tamaño', '', `- ${s.size || 'M'}`, '',
     '## Contrato de entrega', '',
     `- Rama \`${cfg.branchPrefix[type] || type + '/'}<número>-<slug>\`, worktree propio, PR con \`Closes #<número>\`.`,
     '- El implementador cierra con la **tarjeta de entrega** (JSON validado: comandos ejecutados, pruebas, criterios con evidencia, puntos ciegos).',
@@ -55,7 +67,7 @@ function create() {
   const title = get('--title') || `${id} ${s.title}`;
   let body = issueBody(s, type);
   if (body.length > 60000) body = body.slice(0, 60000) + '\n\n> Rebanada truncada: partí la sección del PRD.';
-  const labels = [`prd:${id}`, `tipo:${type}`, L.ready];
+  const labels = [`prd:${id}`, `tipo:${type}`, `tamaño:${s.size || 'M'}`, L.ready];
   if (has('--dry-run')) { console.log(`Título: ${title}\nEtiquetas: ${labels.join(', ')}\n\n${body}`); return; }
   if (!has('--force')) {
     const prev = ghJson(['issue', 'list', '--label', `prd:${id}`, '--state', 'open', '--json', 'number,title,url']) || [];
@@ -109,9 +121,24 @@ function pr() {
   const branch = git(['branch', '--show-current']).stdout.trim();
   if (!new RegExp(`^(feat|fix)/${i.number}-`).test(branch) && !has('--force')) throw new Error(`La rama actual (${branch || 'ninguna'}) no es la del ticket #${i.number} (esperada ${branchOf(i)}). Usá --force si es a propósito.`);
   const c = get('--card') ? renderCard(get('--card')) : null;
-  const body = [`Closes #${i.number}`, '', '## Resumen', '', c ? c.summary : '(completar)', '', ...(c ? [c.md] : ['> Sin tarjeta de entrega: el auditor la va a pedir.'])].join('\n') + '\n';
+  const bodyOf = () => [`Closes #${i.number}`, '', '## Resumen', '', (c ? c.summary : '(completar)') + summaryNote, '', ...(c ? [c.md] : ['> Sin tarjeta de entrega: el auditor la va a pedir.'])].join('\n') + '\n';
+  // Resumen versionable del expediente (el "por qué" queda en git y viaja con el PR; los borradores quedan locales).
+  let summaryNote = '';
+  try {
+    const dossier = require('../../dispatch/scripts/dossier.cjs');
+    const main = dossier.mainRoot(root);
+    if (fs.existsSync(dossier.dir(main, i.number)) && !has('--dry-run')) {
+      const rel = `docs/tickets/${i.number}.md`;
+      fs.mkdirSync(path.join(root, 'docs', 'tickets'), { recursive: true });
+      fs.writeFileSync(path.join(root, rel), dossier.summary(main, i.number));
+      git(['add', rel]);
+      if (git(['diff', '--cached', '--quiet', '--', rel]).status !== 0) git(['commit', '-q', '-m', `docs(#${i.number}): resumen del ticket`, '--', rel]);
+      summaryNote = `\nResumen del ticket: \`${rel}\``;
+    }
+  } catch (e) { console.error(`AVISO no pude escribir el resumen del ticket: ${e.message}`); }
   const title = `${typeOf(i)}: ${i.title.replace(/^[A-Z]{1,4}-\d{1,4}\s+/, '')} (#${i.number})`;
   const base = get('--base') || (git(['symbolic-ref', '--short', 'refs/remotes/origin/HEAD']).stdout.trim().replace(/^origin\//, '') || 'main');
+  const body = bodyOf();
   if (has('--dry-run')) { console.log(`Título: ${title}\nBase: ${base}\n\n${body}`); return; }
   if (has('--push')) { const p = git(['push', '-u', 'origin', 'HEAD']); if (p.status !== 0) throw new Error(`git push falló: ${p.stderr.trim()}`); }
   const f = tmpFile('pr.md', body);

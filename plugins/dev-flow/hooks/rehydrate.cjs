@@ -61,10 +61,34 @@ process.stdin.on('end', () => {
   }
 
   // Rama de ticket: el contexto del worker es el issue, no el PRD completo.
+  let onTicket = false;
   {
     const br = spawnSync('git', ['branch', '--show-current'], { cwd, encoding: 'utf8' });
     const m = br.status === 0 && br.stdout.trim().match(/^(feat|fix)\/(\d+)-/);
-    if (m) out.push(`Estás en la rama del ticket #${m[2]} (${br.stdout.trim()}). Tu contexto es ese issue: releelo con \`gh issue view ${m[2]}\` si lo perdiste. No leas el PRD completo; si te falta algo, pedilo en el issue.`);
+    if (m) {
+      onTicket = true;
+      out.push(`Estás en la rama del ticket #${m[2]} (${br.stdout.trim()}). Tu contexto es ese issue: releelo con \`gh issue view ${m[2]}\` si lo perdiste. No leas el PRD completo; si te falta algo, pedilo en el issue.`);
+      // Expediente del ticket (vive en el repo principal aunque estés en un worktree): resumen en lugar de releer código.
+      try {
+        const common = spawnSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd, encoding: 'utf8' }).stdout.trim();
+        const main = path.basename(common) === '.git' ? path.dirname(common) : cwd;
+        const d = path.join(main, '.dev-flow', 'tickets', m[2]);
+        const idx = read(path.join(d, 'index.md'));
+        if (idx) out.push(`Expediente del ticket (${d}):\n\n${idx.slice(0, 3500)}\n\nActualizá ${path.join(d, 'progress.md')} mientras trabajás.`);
+      } catch { /* sin expediente */ }
+    }
+  }
+
+  // Tech Lead (no es un worker ni una rama de ticket): su plan de oleadas, guardado fuera del chat.
+  if (!process.env.FEATURE_FLOW_CHILD && !onTicket) {
+    try {
+      const plan = JSON.parse(read(path.join(config.repoRoot(cwd), '.dev-flow', 'plan.json')) || 'null');
+      if (plan && Array.isArray(plan.waves) && plan.waves.length) {
+        const ds = path.join(__dirname, '..', 'skills', 'dispatch', 'scripts', 'dispatch.cjs');
+        const r = spawnSync(process.execPath, [ds, 'plan', 'show'], { cwd: config.repoRoot(cwd), encoding: 'utf8', timeout: 8000 });
+        if (r.status === 0 && r.stdout.trim()) out.push(`Plan del Tech Lead (.dev-flow/plan.json). Seguí desde la primera ola con tickets sin cerrar; el estado real está en dispatch status y ticket status.\n\n${r.stdout.trim()}`);
+      }
+    } catch { /* sin plan */ }
   }
 
   // Feature activa

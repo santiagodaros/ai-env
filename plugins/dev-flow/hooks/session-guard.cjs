@@ -12,7 +12,7 @@ run('session-guard', (input) => {
   const LAUNCHER = String.raw`(?:feature-flow[\\/]scripts[\\/]launch|dispatch[\\/]scripts[\\/]dispatch)\.cjs`;
   // Solo cuenta como lanzador el comando que es exactamente `node <ruta>/(launch|dispatch).cjs [subcomando] [opciones]`,
   // sin encadenar nada: así no sirve de salvoconducto para otro `claude` en la misma línea.
-  const exact = new RegExp(`^\\s*node\\s+("[^"]*${LAUNCHER}"|[^\\s;&|"']*${LAUNCHER})(\\s+[a-z]+)?(\\s+--?[\\w-]+(?:[= ][\\w.\\/:#-]+)?)*\\s*$`).test(cmd);
+  const exact = new RegExp(`^\\s*node\\s+("[^"]*${LAUNCHER}"|[^\\s;&|"']*${LAUNCHER})(\\s+[a-z]+)?(\\s+--?[\\w-]+(?:[= ][\\w.,\\/:#-]+)?)*\\s*$`).test(cmd);
   const mentions = new RegExp(LAUNCHER).test(cmd);
   const child = !!process.env.FEATURE_FLOW_CHILD;
   if (mentions && /--launch\b/.test(cmd)) {

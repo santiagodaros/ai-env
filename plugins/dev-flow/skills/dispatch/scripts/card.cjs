@@ -66,6 +66,7 @@ function render(c, verdict = false) {
   L.push('', '### Pruebas', '', `- Comando: \`${c.tests.command}\` → ${c.tests.passed ? 'pasan' : '**fallan**'}`, `- Nuevas o cambiadas: ${c.tests.added.length ? c.tests.added.map((t) => `\`${t}\``).join(', ') : 'ninguna'}`, `- Fallan sin el cambio: ${c.tests.fail_without_change}`);
   L.push('', '### Criterios de aceptación', '', ...c.acceptance.map((a) => `- [${a.status === 'cumple' ? 'x' : ' '}] ${a.criterion} — **${a.status}**: ${a.evidence}`));
   L.push('', '### Puntos ciegos (no verificados)', '', ...c.blind_spots.map((b) => `- ${b}`));
+  if (c.decisions && c.decisions.length) L.push('', '### Decisiones', '', ...c.decisions.map((d) => `- ${d.decision} (${d.reason})`));
   if (c.risks && c.risks.length) L.push('', '### Riesgos', '', ...c.risks.map((r) => `- ${r}`));
   if (c.followups && c.followups.length) L.push('', '### Pendientes para otro ticket', '', ...c.followups.map((r) => `- ${r}`));
   L.push('', '### Archivos', '', ...c.files_changed.map((f) => `- \`${f}\``));

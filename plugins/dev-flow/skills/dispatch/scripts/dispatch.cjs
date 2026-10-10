@@ -1,21 +1,28 @@
 #!/usr/bin/env node
 // El Tech Lead lanza workers efímeros: un rol, un ticket, contexto en frío, worktree propio y salida estructurada.
 // Uso:
-//   node dispatch.cjs run --issue <N> --role implementer|sre|docs [--mode headless|bg] [--launch]
+//   node dispatch.cjs run --issue <N> --role implementer|sre|docs [--size S|M|L] [--mode headless|bg] [--launch]
+//   node dispatch.cjs run --issues 12,13 --role implementer [--launch]     (lote paralelo: solo tickets independientes)
 //   node dispatch.cjs run --pr <P> --role auditor [--issue <N>] [--launch]
-//   node dispatch.cjs status [--json]
-//   node dispatch.cjs collect --run <id> [--comment]
-// Sin --launch es un dry-run: muestra el plan, el prompt y el comando. Comparte topes y registro con feature-flow.
-// headless: `claude -p` con la tarjeta (o el veredicto) validada por --json-schema; corre desacoplado y se sigue con status.
-// bg: `claude --bg` (se ve en claude agents); el worker escribe la tarjeta en la carpeta de la corrida.
+//   node dispatch.cjs resume --run <id> [--max-turns N] [--launch]          (retoma la misma sesión desde progress.md)
+//   node dispatch.cjs status [--json]  ·  collect --run <id> [--comment] [--show]
+//   node dispatch.cjs stats [--days 30] [--json]
+//   node dispatch.cjs plan set "12,13 | 14 | 15" [--goal "..."]  ·  plan show
+//   node dispatch.cjs memory show [--role r] · memory propose · memory add --role r "lección"
+// Sin --launch es un dry-run. Antes de lanzar corre `harness check --pre`: no se lanza sobre una base rota.
+// Cada corrida copia los scripts del plugin a su carpeta (versión fijada: una actualización a mitad de camino no la rompe)
+// y lleva un --session-id propio (para reanudarla). Lo que el worker hace queda en el expediente del ticket
+// (.dev-flow/tickets/<N>/); al Tech Lead solo le llegan resúmenes de una línea y rutas.
 'use strict';
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { spawn, spawnSync } = require('child_process');
 const config = require('../../../lib/config.cjs');
 const guard = require('../../../lib/launch-guard.cjs');
-const { ghJson, linkedIssue } = require('../../../lib/gh.cjs');
+const { gh, ghJson, linkedIssue } = require('../../../lib/gh.cjs');
 const card = require('./card.cjs');
+const dossier = require('./dossier.cjs');
 
 const argv = process.argv.slice(2);
 const cmd = argv[0];
@@ -23,8 +30,11 @@ const get = (k) => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : un
 const has = (k) => argv.includes(k);
 const fail = (m) => { console.error('RECHAZADO: ' + m); process.exit(1); };
 const PLUGIN = path.join(__dirname, '..', '..', '..');
-const S = (rel) => path.join(PLUGIN, rel);
 const ROLES = ['implementer', 'auditor', 'sre', 'docs'];
+const SIZES = { S: { maxTurns: 30, effort: 'medium' }, M: { maxTurns: 60, effort: 'medium' }, L: { maxTurns: 100, effort: 'high', model: 'opus' } };
+const MODELS = { implementer: 'sonnet', sre: 'sonnet', docs: 'haiku' }; // el auditor usa el de su definición (opus)
+const readJson = (f) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return null; } };
+const read = (f) => { try { return fs.readFileSync(f, 'utf8'); } catch { return ''; } };
 
 // Cómo invocar claude sin shell (el JSON del esquema no sobrevive a cmd.exe). AI_ENV_CLAUDE='["node","falso.cjs"]' en pruebas.
 function claudeCmd() {
@@ -35,193 +45,379 @@ function claudeCmd() {
   const exe = hits.find((h) => /\.exe$/i.test(h));
   if (exe) return [exe];
   const shim = hits.find((h) => /\.cmd$/i.test(h));
-  if (shim) {
-    const js = path.join(path.dirname(shim), 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js');
-    if (fs.existsSync(js)) return [process.execPath, js];
-  }
+  if (shim) { const js = path.join(path.dirname(shim), 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js'); if (fs.existsSync(js)) return [process.execPath, js]; }
   return ['claude'];
 }
 
 // Definición del rol (agents/<rol>.md): el cuerpo va como system prompt y el frontmatter da herramientas y modelo.
 // No se usa --agent: en modo headless no resuelve agentes de plugin.
-function roleDef(role) {
-  const t = fs.readFileSync(S(`agents/${role}.md`), 'utf8').replace(/\r\n/g, '\n');
+function roleDef(role, root) {
+  const t = fs.readFileSync(path.join(PLUGIN, 'agents', `${role}.md`), 'utf8').replace(/\r\n/g, '\n');
   const m = t.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
-  const fm = m ? m[1] : '', body = (m ? m[2] : t).trim();
+  const fm = m ? m[1] : '';
+  let body = (m ? m[2] : t).trim();
   const field = (k) => { const x = fm.match(new RegExp(`^${k}:\\s*(.+)$`, 'm')); return x ? x[1].trim() : null; };
   const list = (k) => (field(k) || '').split(',').map((x) => x.trim()).filter(Boolean);
+  // Reglas del proyecto (.claude/prompts/<rol>.md) y memoria aprobada del rol (.dev-flow/memory/<rol>.md): se suman.
+  const own = read(path.join(root, '.claude', 'prompts', `${role}.md`)).trim();
+  if (/^\s*-\s+\S/m.test(own)) body += `\n\n## Reglas del proyecto (.claude/prompts/${role}.md)\n\n${own}`;
+  const mem = memoryOf(root, role);
+  if (mem) body += `\n\n## Memoria del rol en este repo (lecciones aprobadas)\n\n${mem}`;
   return { body, model: field('model'), maxTurns: Number(field('maxTurns')) || null, disallowed: list('disallowedTools') };
 }
 
 function slugify(t) { return t.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/^\[?[a-z]{1,4}-\d{1,4}\]?\s*/, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').split('-').slice(0, 4).join('-') || 'ticket'; }
 
-function prompt({ role, issue, pr, runDir, base, modeHeadless, cardFile }) {
-  const C = `node "${S('skills/dispatch/scripts/card.cjs')}"`;
+// Alcance, dependencias y tamaño declarados en el issue (los escribe ticket.cjs desde el PRD).
+function sectionOf(body, re) {
+  const lines = String(body || '').split('\n');
+  const i = lines.findIndex((l) => /^##\s/.test(l) && re.test(l));
+  if (i < 0) return '';
+  const j = lines.slice(i + 1).findIndex((l) => /^##\s/.test(l) || /^---\s*$/.test(l));
+  return lines.slice(i + 1, j < 0 ? undefined : i + 1 + j).join('\n');
+}
+function scopeOf(issue) {
+  const files = [...sectionOf(issue.body, /^##\s+Alcance/i).matchAll(/^\s*-\s+`?([^`\s(][^`\s]*)`?/gm)].map((m) => m[1].replace(/\\/g, '/'));
+  const deps = [...sectionOf(issue.body, /^##\s+Dependencias/i).matchAll(/#(\d+)/g)].map((m) => Number(m[1]));
+  const lab = (issue.labels || []).map((l) => l.name).find((x) => /^tama(ñ|n)o:[SML]$/.test(x));
+  const size = lab ? lab.slice(-1) : ((sectionOf(issue.body, /^##\s+Tama/i).match(/\b([SML])\b/) || [])[1] || null);
+  return { files, deps, size };
+}
+const overlap = (a, b) => a.some((x) => b.some((y) => x === y || x.startsWith(y.replace(/\/?\*+$/, '') + '/') || y.startsWith(x.replace(/\/?\*+$/, '') + '/')));
+
+function memoryOf(root, role) {
+  const t = read(path.join(root, '.dev-flow', 'memory', `${role}.md`)).trim();
+  return t ? t.split('\n').filter((l) => /^\s*-\s+\S/.test(l)).slice(-40).join('\n') : '';
+}
+
+function codemapFor(root, files) {
+  if (!files.length) return '';
+  try { return require('./codemap.cjs').slice(root, files); } catch { return ''; }
+}
+
+// Copia del plugin para la corrida: lo que el worker ejecuta no cambia si el plugin se actualiza mientras trabaja.
+function pinTools(runDir) {
+  const dest = path.join(runDir, 'tools');
+  fs.cpSync(PLUGIN, dest, { recursive: true, filter: (src) => !/[\\/](node_modules|evals|\.git)([\\/]|$)/.test(src) });
+  return dest;
+}
+
+// Rutas de trabajo del worker, relativas a su worktree (ver dossier.WORK).
+const WORK_PROGRESS = '.dev-flow/ticket/progress.md';
+const WORK_CARD = '.dev-flow/ticket/card.json';
+// Lo que las evals mostraron que hace perder turnos: la sesión con -w rechaza Write y redirecciones fuera del worktree,
+// y los comandos compuestos con git o gh ("too complex to verify"); en el auditor, la lista de permitidos también.
+const WORKTREE_RULES = (role) => [
+  role === 'auditor' ? '- No escribas archivos.' : `- Escribí solo dentro de tu worktree (con Write o Edit, rutas relativas). El expediente y la carpeta de la corrida son de solo lectura para vos.`,
+  '- Un comando por llamada a Bash, sin `&&`, `;`, `|`, `$(…)`, heredocs ni `echo $?`: el código de salida ya viene en el resultado. Con git y gh es obligatorio (si no, se rechaza).',
+  '- Si algo se rechaza por permisos o por el aislamiento, no busques otra vía para lo mismo: anotalo en los puntos ciegos.',
+];
+
+function prompt({ role, issue, pr, runDir, toolsDir, base, modeHeadless, cardFile, ticketDir, codemap }) {
+  const T = (rel) => path.join(toolsDir, rel);
+  const C = `node "${T('skills/dispatch/scripts/card.cjs')}"`;
+  const harness = `node "${T('skills/dispatch/scripts/harness.cjs')}" check --worker`;
   const scripts = role === 'auditor' ? [
-    `- Auditoría determinista: node "${S('skills/audit/scripts/audit.cjs')}" --base ${base}`,
-    `- Honestidad de pruebas: node "${S('skills/audit/scripts/test-honesty.cjs')}" --base ${base}`,
-    cardFile ? `- Tarjeta del implementador: ${C} verify "${cardFile}" --base ${base} --run-tests` : '- No hay tarjeta del implementador guardada para este ticket: eso es un hallazgo de contrato.',
-    `- Esquema del veredicto: ${card.schemaPath(true)}`,
+    `- Auditoría determinista: node "${T('skills/audit/scripts/audit.cjs')}" --base ${base}`,
+    `- Honestidad de pruebas: node "${T('skills/audit/scripts/test-honesty.cjs')}" --base ${base}`,
+    cardFile ? `- Tarjeta del implementador: ${C} verify "${cardFile}" --base ${base} --run-tests`
+      : /## Tarjeta de entrega/.test((pr && pr.body) || '') ? '- La tarjeta del implementador está en el cuerpo del PR (sección "Tarjeta de entrega"); no hay copia local para verify: contrastala a mano con el diff y las pruebas.'
+        : '- No hay tarjeta del implementador (ni guardada ni en el cuerpo del PR): eso es un hallazgo de contrato.',
+    `- Esquema del veredicto: ${T('skills/dispatch/schemas/verdict.schema.json')}`,
   ] : [
-    `- Honestidad de pruebas: node "${S('skills/audit/scripts/test-honesty.cjs')}" --base ${base}`,
+    `- Primero, el arnés en tu worktree (si da FALLA, no arranques): ${harness}`,
+    `- Honestidad de pruebas: node "${T('skills/audit/scripts/test-honesty.cjs')}" --base ${base}`,
     `- Validar la tarjeta: ${C} check <archivo>`,
-    `- Esquema de la tarjeta: ${card.schemaPath(false)}`,
-    ...(role === 'docs' ? [`- Estado del proyecto: node "${S('skills/ticket/scripts/estado.cjs')}" --write`, `- PRD: node "${S('skills/prd/scripts/prd.cjs')}" check`] : []),
-    ...(has('--pr-after') ? [`- Abrir el PR: node "${S('skills/ticket/scripts/ticket.cjs')}" pr ${issue.number} --card "${path.join(runDir, 'card.json')}" --push`] : []),
+    `- Esquema de la tarjeta: ${T('skills/dispatch/schemas/card.schema.json')}`,
+    ...(role === 'docs' ? [`- Estado del proyecto: node "${T('skills/ticket/scripts/estado.cjs')}" --write`, `- PRD: node "${T('skills/prd/scripts/prd.cjs')}" check`] : []),
+    ...(has('--pr-after') ? [`- Abrir el PR: node "${T('skills/ticket/scripts/ticket.cjs')}" pr ${issue.number} --card ${WORK_CARD} --push`] : []),
   ];
   const out = role === 'auditor'
     ? 'Tu respuesta final es el JSON del veredicto (se valida con el esquema). No guardes archivos: no tenés permiso de escritura.'
     : modeHeadless
-      ? `Tu respuesta final es el JSON de la tarjeta de entrega (se valida con el esquema). Guardá también una copia en ${path.join(runDir, 'card.json')}.`
-      : `Al terminar, guardá la tarjeta de entrega en ${path.join(runDir, 'card.json')} y validala con card.cjs check.`;
+      ? `Tu respuesta final es el JSON de la tarjeta de entrega (se valida con el esquema). Incluí en "decisions" las decisiones de diseño con su motivo. Antes, guardala en ${WORK_CARD} (ruta relativa a tu worktree) y validala: ${C} check ${WORK_CARD}`
+      : `Al terminar, guardá la tarjeta de entrega en ${WORK_CARD} (ruta relativa a tu worktree) y validala: ${C} check ${WORK_CARD}`;
   const L = [`Rol: ${role}. Rama base: ${base}.`];
   if (role === 'auditor') {
     L.push(`Auditá el PR #${pr.number}: ${pr.title}`, `${pr.url || ''}`, '', `Ticket enlazado: ${issue ? `#${issue.number} ${issue.title}` : 'ninguno (eso ya es un hallazgo de contrato)'}`);
     if (issue) L.push('', '## Ticket (alcance y criterios)', '', issue.body || '');
     L.push('', 'Estás en un worktree con la rama del PR. No edites archivos. No apruebes ni mergees.', 'No comentes en el PR: el Tech Lead publica tu veredicto.');
+    L.push('', 'Si existen docs/conventions.md y docs/verification.md, sumá un chequeo por cada uno (pasa/falla con evidencia).');
   } else {
     L.push(`Ticket #${issue.number}: ${issue.title}`, issue.url || '', '', '## Ticket', '', issue.body || '');
     L.push('', `Trabajás en tu propio worktree, en la rama del ticket. ${has('--pr-after') ? 'Al terminar, abrí el PR con ticket.cjs pr.' : 'No abras el PR: lo abre el Tech Lead con tu tarjeta.'}`);
+    L.push('', 'Si existe AGENTS.md en el repo, es el mapa: leé solo lo que te indique para esta tarea.');
   }
-  L.push('', '## Scripts (rutas absolutas)', '', ...scripts, '', out, 'No abras otras sesiones ni subagentes. Si te bloqueás, decilo en la salida y terminá.');
+  const idx = read(path.join(ticketDir, 'index.md')).trim();
+  L.push('', '## Expediente del ticket', '', `Carpeta: ${ticketDir}`);
+  if (idx && role !== 'auditor') L.push('Lo que ya pasó en este ticket (resumen; no releas el código entero si esto alcanza):', '', idx);
+  if (role !== 'auditor') L.push('', `Mantené ${WORK_PROGRESS} (ruta relativa a tu worktree; el arnés lo crea con lo de corridas anteriores y lo copia al expediente) al día MIENTRAS trabajás: plan, hecho, decisiones con motivo, siguiente paso. Si la corrida se corta, la siguiente arranca de ahí.`);
+  L.push('', '## Reglas del worktree aislado', '', ...WORKTREE_RULES(role));
+  if (codemap) L.push('', '## Mapa del código de tu alcance (docs/codemap.md)', '', codemap);
+  L.push('', '## Scripts (rutas absolutas; versión fijada para esta corrida)', '', ...scripts, '', out,
+    'Si una herramienta falla, reintentá una vez; si sigue fallando, no improvises un atajo: anotalo en progress.md y terminá con la tarjeta explicando el bloqueo.',
+    'No abras otras sesiones ni subagentes.');
   return L.join('\n') + '\n';
 }
 
-function run() {
-  if (process.env.FEATURE_FLOW_CHILD) fail('esta sesión es un worker: no puede lanzar otros.');
-  const role = get('--role');
-  if (!ROLES.includes(role)) fail(`--role tiene que ser ${ROLES.join(', ')}.`);
-  const top = spawnSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8' });
-  if (top.status !== 0) fail('no estás dentro de un repo git.');
-  const root = top.stdout.trim();
-  const cfg = config.load(root);
-  const W = cfg.workers || {};
-  const mode = get('--mode') || W.mode || 'headless';
-  if (!['headless', 'bg'].includes(mode)) fail('--mode es headless o bg.');
-  const base = (spawnSync('git', ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'], { cwd: root, encoding: 'utf8' }).stdout || '').trim().replace(/^origin\//, '') || 'main';
+function schemaArg(verdict) {
+  const o = readJson(card.schemaPath(verdict));
+  delete o.$schema; // el validador de Claude Code no resuelve el metaesquema 2020-12
+  return JSON.stringify(o);
+}
 
+function preCheck(root) {
+  if (has('--skip-check')) return 'chequeo previo salteado (--skip-check)';
+  const r = spawnSync(process.execPath, [path.join(__dirname, 'harness.cjs'), 'check', '--pre', '--json'], { cwd: root, encoding: 'utf8' });
+  let j = null; try { j = JSON.parse(r.stdout); } catch { /* salida rara */ }
+  if (!j) fail(`no pude correr el chequeo previo del arnés: ${(r.stderr || r.stdout || '').trim().slice(0, 200)}`);
+  const bad = j.rows.filter((x) => x.res === 'FALLA');
+  if (bad.length) fail(`el arnés no está en condiciones:\n- ${bad.map((x) => `${x.name}: ${x.detail}`).join('\n- ')}\n(node harness.cjs check --pre para ver todo)`);
+  return `Arnés: ${j.rows.filter((x) => x.res === 'OK').length} OK, ${j.rows.filter((x) => x.res === 'AVISO').length} aviso(s).`;
+}
+
+function context(root, cfg, role, n, prN) {
   let issue = null, pr = null, name;
-  try {
-    if (role === 'auditor') {
-      if (!/^\d+$/.test(get('--pr') || '')) fail('el auditor necesita --pr <número>.');
-      pr = ghJson(['pr', 'view', get('--pr'), '--json', 'number,title,body,headRefName,baseRefName,url,state']);
-      if (pr.state && pr.state !== 'OPEN') fail(`el PR #${pr.number} está ${pr.state}.`);
-      const n = get('--issue') || linkedIssue(pr);
-      if (n) issue = ghJson(['issue', 'view', String(n), '--json', 'number,title,body,labels,url,state']);
-      // Rama de ticket → mismo worktree que el del implementador si sigue en esta máquina; si no, se trae del remoto.
-      name = /^(feat|fix|docs|chore)\/\d+-/.test(pr.headRefName || '') ? pr.headRefName.replace('/', '-') : `pr-${pr.number}`;
-    } else {
-      if (!/^\d+$/.test(get('--issue') || '')) fail('falta --issue <número>.');
-      issue = ghJson(['issue', 'view', get('--issue'), '--json', 'number,title,body,labels,url,state,assignees']);
-      if (issue.state !== 'OPEN') fail(`#${issue.number} está ${issue.state}.`);
-      if ((issue.labels || []).some((l) => l.name === cfg.labels.blocked)) fail(`#${issue.number} está bloqueado: resolvé la duda del issue antes de lanzar.`);
-      const type = role === 'docs' ? 'docs' : (issue.labels || []).some((l) => l.name === 'tipo:fix') ? 'fix' : 'feat';
-      name = `${type}-${issue.number}-${slugify(issue.title)}`;
+  if (role === 'auditor') {
+    pr = ghJson(['pr', 'view', String(prN), '--json', 'number,title,body,headRefName,baseRefName,url,state']);
+    if (pr.state && pr.state !== 'OPEN') fail(`el PR #${pr.number} está ${pr.state}.`);
+    const i = get('--issue') || linkedIssue(pr);
+    if (i) issue = ghJson(['issue', 'view', String(i), '--json', 'number,title,body,labels,url,state']);
+    // Rama de ticket → mismo worktree que el del implementador si sigue en esta máquina; si no, se trae del remoto.
+    name = /^(feat|fix|docs|chore)\/\d+-/.test(pr.headRefName || '') ? pr.headRefName.replace('/', '-') : `pr-${pr.number}`;
+  } else {
+    issue = ghJson(['issue', 'view', String(n), '--json', 'number,title,body,labels,url,state,assignees']);
+    if (issue.state !== 'OPEN') fail(`#${issue.number} está ${issue.state}.`);
+    if ((issue.labels || []).some((l) => l.name === cfg.labels.blocked)) fail(`#${issue.number} está bloqueado: resolvé la duda del issue antes de lanzar.`);
+    const sc = scopeOf(issue);
+    for (const d of sc.deps) {
+      const di = ghJson(['issue', 'view', String(d), '--json', 'number,state']);
+      if (di.state !== 'CLOSED') fail(`#${issue.number} depende de #${d}, que sigue abierto.`);
     }
-  } catch (e) { fail(e.message); }
+    const type = role === 'docs' ? 'docs' : (issue.labels || []).some((l) => l.name === 'tipo:fix') ? 'fix' : 'feat';
+    name = `${type}-${issue.number}-${slugify(issue.title)}`;
+  }
+  return { issue, pr, name };
+}
 
+function buildLaunch(root, cfg, role, ctx, mode, base) {
+  const { issue, pr, name } = ctx;
+  const W = cfg.workers || {};
   const key = `${role}-${role === 'auditor' ? `pr${pr.number}` : issue.number}`;
-  const claude = claudeCmd();
-  const c = guard.check(root, key, claude, { repeatHours: role === 'auditor' ? 1 : 24 });
-  if (!c.ok) fail(c.msg);
-  const b = guard.budget(root, key);
-  if (!b.ok) fail(b.text);
-
+  const sc = issue ? scopeOf(issue) : { files: [], size: null };
+  const size = (get('--size') || sc.size || 'M').toUpperCase();
+  if (!SIZES[size]) fail('--size es S, M o L.');
+  const sz = { ...SIZES[size], ...((W.sizes || {})[size] || {}) };
+  const def = roleDef(role, root);
+  const model = get('--model') || (role !== 'auditor' && sz.model) || (W.models || {})[role] || (role === 'auditor' ? def.model : MODELS[role]) || def.model;
+  const maxTurns = Number(get('--max-turns') || (role === 'auditor' ? def.maxTurns : sz.maxTurns) || W.maxTurns || 80);
+  const effort = role === 'auditor' ? 'high' : sz.effort;
   const id = `${new Date().toISOString().replace(/[-:]/g, '').slice(0, 13)}-${key}`;
   const runDir = path.join(root, '.dev-flow', 'runs', id);
-  if (role === 'auditor' && mode !== 'headless') fail('el auditor corre solo en modo headless: no tiene permiso de escritura y su veredicto sale validado por esquema.');
+  const ticketN = issue ? issue.number : null;
+  const ticketDir = ticketN ? dossier.dir(root, ticketN) : runDir;
   const cardFile = issue && fs.existsSync(path.join(root, '.dev-flow', 'cards', `${issue.number}.json`)) ? path.join(root, '.dev-flow', 'cards', `${issue.number}.json`) : null;
-  const text = prompt({ role, issue, pr, runDir, base, modeHeadless: mode === 'headless', cardFile });
-  // El hook de worktrees por settings: así `-w` también crea el worktree fuera del repo (el del plugin no alcanza al flag).
-  const settings = { hooks: {
-    WorktreeCreate: [{ hooks: [{ type: 'command', command: `node "${S('hooks/worktree.cjs').replace(/\\/g, '/')}" create`, timeout: 120 }] }],
-    WorktreeRemove: [{ hooks: [{ type: 'command', command: `node "${S('hooks/worktree.cjs').replace(/\\/g, '/')}" remove`, timeout: 90 }] }],
-  } };
-  // El validador de Claude Code no resuelve el metaesquema 2020-12: se pasa el esquema sin "$schema".
-  const schemaObj = JSON.parse(fs.readFileSync(card.schemaPath(role === 'auditor'), 'utf8'));
-  delete schemaObj.$schema;
-  const schema = JSON.stringify(schemaObj);
-  const def = roleDef(role);
-  // Reglas del proyecto para el rol (.claude/prompts/<rol>.md): se suman, no reemplazan.
-  const own = path.join(root, '.claude', 'prompts', `${role}.md`);
-  if (fs.existsSync(own)) { const t = fs.readFileSync(own, 'utf8').trim(); if (/^\s*-\s+\S/m.test(t)) def.body += `\n\n## Reglas del proyecto (.claude/prompts/${role}.md)\n\n${t}`; }
-  const common = ['-w', name, '--settings', path.join(runDir, 'settings.json'), '--add-dir', runDir, '--append-system-prompt', def.body, ...(def.disallowed.length ? ['--disallowedTools', def.disallowed.join(',')] : []), ...(get('--model') || def.model ? ['--model', get('--model') || def.model] : [])];
+  const toolsDir = path.join(runDir, 'tools');
+  const text = prompt({ role, issue, pr, runDir, toolsDir, base, modeHeadless: mode === 'headless', cardFile, ticketDir, codemap: codemapFor(root, sc.files) });
+  const sessionId = crypto.randomUUID();
+  const common = ['-w', name, '--session-id', sessionId, '--settings', path.join(runDir, 'settings.json'), '--add-dir', runDir, ...(ticketN ? ['--add-dir', ticketDir] : []),
+    '--append-system-prompt', def.body, ...(def.disallowed.length ? ['--disallowedTools', def.disallowed.join(',')] : []), ...(model ? ['--model', model] : []), ...(effort ? ['--effort', effort] : [])];
   const perms = role === 'auditor'
-    ? ['--permission-mode', 'default', '--allowedTools', ['Read', 'Glob', 'Grep', 'Bash(git *)', 'Bash(gh pr *)', 'Bash(gh issue view *)', 'Bash(node *)', 'Bash(npm test*)', 'Bash(npm run *)', 'Bash(pnpm *)', 'Bash(npx *)', 'PowerShell'].join(',')]
+    ? ['--permission-mode', 'default', '--allowedTools', ['Read', 'Glob', 'Grep', 'Bash(git *)', 'Bash(ls *)', 'Bash(gh pr *)', 'Bash(gh issue view *)', 'Bash(node *)', 'Bash(npm test*)', 'Bash(npm run *)', 'Bash(pnpm *)', 'Bash(npx *)', 'PowerShell'].join(',')]
     : ['--permission-mode', W.permissionMode || 'auto', '--allowedTools', (W.allowedTools || []).join(',')];
   const args = mode === 'headless'
-    ? ['-p', ...common, ...perms, '--output-format', 'json', '--json-schema', schema, '--max-turns', String(get('--max-turns') || W.maxTurns || def.maxTurns || 80)]
+    ? ['-p', ...common, ...perms, '--output-format', 'json', '--json-schema', schemaArg(role === 'auditor'), '--max-turns', String(maxTurns)]
     : ['--bg', ...common, ...perms, '-n', name, `Leé tus instrucciones en ${path.join(runDir, 'prompt.md')} y seguilas.`];
+  return { key, id, runDir, ticketN, ticketDir, text, args, name, size, model, maxTurns, effort, sessionId, files: sc.files };
+}
 
-  console.log(`Worker: ${role} ${role === 'auditor' ? `PR #${pr.number}` : `#${issue.number}`} (${mode})`);
-  console.log(`Worktree: ${name}  ·  corrida ${id}`);
-  console.log(`Cupos: ${c.info.running.total}/${c.info.maxConcurrent} en segundo plano, ${c.info.today}/${c.info.maxPerDay} lanzadas en 24 h, espera mínima ${c.info.cooldown} min.`);
-  console.log(b.text);
-  console.log(`Comando: ${[...claude, ...args.map((a) => (a.length > 80 ? a.slice(0, 60) + '…' : a))].join(' ')}`);
-  console.log(`\n--- prompt (${text.length} caracteres) ---\n${text.slice(0, 1500)}${text.length > 1500 ? '\n[…]' : ''}`);
-  if (!has('--launch')) { console.log('\nDry-run: no se lanzó nada. Agregá --launch para lanzar.'); return; }
+function settingsFor(toolsDir) {
+  const w = path.join(toolsDir, 'hooks', 'worktree.cjs').replace(/\\/g, '/');
+  // El hook de worktrees por settings: así `-w` también crea el worktree fuera del repo (el del plugin no alcanza al flag).
+  return { hooks: { WorktreeCreate: [{ hooks: [{ type: 'command', command: `node "${w}" create`, timeout: 120 }] }], WorktreeRemove: [{ hooks: [{ type: 'command', command: `node "${w}" remove`, timeout: 90 }] }] } };
+}
 
-  fs.mkdirSync(runDir, { recursive: true });
-  fs.writeFileSync(path.join(runDir, 'prompt.md'), text);
-  fs.writeFileSync(path.join(runDir, 'settings.json'), JSON.stringify(settings, null, 2));
-  const env = { ...process.env, FEATURE_FLOW_CHILD: '1', DEV_FLOW_ROLE: role, DEV_FLOW_RUN: id, ...(issue ? { DEV_FLOW_TICKET: String(issue.number) } : {}) };
-  const [exe, ...pre] = claude;
-  const meta = { id, role, mode, key, kind: 'worker', issue: issue ? issue.number : null, pr: pr ? pr.number : null, worktree: name, runDir, at: Date.now() };
+function spawnWorker(root, L, mode, role, issue, pr, cwd, extra = {}) {
+  fs.mkdirSync(L.runDir, { recursive: true });
+  const toolsDir = pinTools(L.runDir);
+  fs.writeFileSync(path.join(L.runDir, 'prompt.md'), L.text);
+  fs.writeFileSync(path.join(L.runDir, 'settings.json'), JSON.stringify(settingsFor(toolsDir), null, 2));
+  if (L.ticketN) dossier.init(root, L.ticketN, { title: issue ? issue.title : '', brief: issue ? issue.body : '' });
+  const env = { ...process.env, FEATURE_FLOW_CHILD: '1', DEV_FLOW_ROLE: role, DEV_FLOW_RUN: L.id, ...(L.ticketN ? { DEV_FLOW_TICKET: String(L.ticketN), DEV_FLOW_DOSSIER: L.ticketDir } : {}) };
+  const [exe, ...pre] = claudeCmd();
+  const pluginVersion = (readJson(path.join(PLUGIN, '.claude-plugin', 'plugin.json')) || {}).version;
+  const meta = { id: L.id, role, mode, key: L.key, kind: 'worker', issue: issue ? issue.number : null, pr: pr ? pr.number : null, worktree: L.name, runDir: L.runDir, ticketDir: L.ticketDir, size: L.size, model: L.model || null, maxTurns: L.maxTurns, session: L.sessionId, pluginVersion, at: Date.now(), ...extra };
   if (mode === 'headless') {
-    const out = fs.openSync(path.join(runDir, 'out.json'), 'w'), errf = fs.openSync(path.join(runDir, 'err.log'), 'w');
-    const inp = fs.openSync(path.join(runDir, 'prompt.md'), 'r');
-    const child = spawn(exe, [...pre, ...args], { cwd: root, env, detached: true, stdio: [inp, out, errf], windowsHide: true });
-    child.on('error', (e) => { fs.appendFileSync(path.join(runDir, 'err.log'), `spawn: ${e.message}\n`); });
+    const out = fs.openSync(path.join(L.runDir, 'out.json'), 'w'), errf = fs.openSync(path.join(L.runDir, 'err.log'), 'w');
+    const inp = fs.openSync(path.join(L.runDir, 'prompt.md'), 'r');
+    const child = spawn(exe, [...pre, ...L.args], { cwd, env, detached: true, stdio: [inp, out, errf], windowsHide: true });
+    child.on('error', (e) => { fs.appendFileSync(path.join(L.runDir, 'err.log'), `spawn: ${e.message}\n`); });
     child.unref();
     meta.pid = child.pid;
   } else {
-    const r = spawnSync(exe, [...pre, ...args], { cwd: root, env, encoding: 'utf8', windowsHide: true });
+    const r = spawnSync(exe, [...pre, ...L.args], { cwd, env, encoding: 'utf8', windowsHide: true });
     if (r.status !== 0) fail(`claude devolvió error: ${(r.stderr || r.stdout || '').trim().slice(0, 300)}`);
-    meta.session = (r.stdout || '').trim().split(/\s+/).pop();
   }
-  fs.writeFileSync(path.join(runDir, 'meta.json'), JSON.stringify(meta, null, 2));
-  guard.record(root, { key, kind: 'worker', mode, pid: meta.pid, run: id });
-  console.log(`\nLanzado. Seguilo con: node "${__filename}" status`);
+  fs.writeFileSync(path.join(L.runDir, 'meta.json'), JSON.stringify(meta, null, 2));
+  return meta;
 }
+
+function repoContext() {
+  if (process.env.FEATURE_FLOW_CHILD) fail('esta sesión es un worker: no puede lanzar otros.');
+  const top = spawnSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8' });
+  if (top.status !== 0) fail('no estás dentro de un repo git.');
+  const root = dossier.mainRoot(top.stdout.trim());
+  const cfg = config.load(root);
+  const base = (spawnSync('git', ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'], { cwd: root, encoding: 'utf8' }).stdout || '').trim().replace(/^origin\//, '') || 'main';
+  return { root, cfg, base };
+}
+
+function run() {
+  const role = get('--role');
+  if (!ROLES.includes(role)) fail(`--role tiene que ser ${ROLES.join(', ')}.`);
+  const { root, cfg, base } = repoContext();
+  const mode = get('--mode') || (cfg.workers || {}).mode || 'headless';
+  if (!['headless', 'bg'].includes(mode)) fail('--mode es headless o bg.');
+  if (role === 'auditor' && mode !== 'headless') fail('el auditor corre solo en modo headless: no tiene permiso de escritura y su veredicto sale validado por esquema.');
+  const batch = get('--issues');
+  let targets;
+  if (role === 'auditor') { if (!/^\d+$/.test(get('--pr') || '')) fail('el auditor necesita --pr <número>.'); targets = [{ pr: get('--pr') }]; }
+  else if (batch) { if (!/^\d+(,\d+)+$/.test(batch)) fail('--issues espera números separados por coma (al menos dos).'); targets = batch.split(',').map((n) => ({ n })); }
+  else { if (!/^\d+$/.test(get('--issue') || '')) fail('falta --issue <número>.'); targets = [{ n: get('--issue') }]; }
+  let ctxs;
+  try { ctxs = targets.map((t) => context(root, cfg, role, t.n, t.pr)); } catch (e) { fail(e.message); }
+  if (ctxs.length > 1) {
+    // Paralelo seguro: cada ticket declara su alcance y ninguno pisa archivos de otro ni depende de otro del lote.
+    const scopes = ctxs.map((c) => ({ n: c.issue.number, ...scopeOf(c.issue) }));
+    const blind = scopes.filter((s) => !s.files.length);
+    if (blind.length) fail(`para lanzar en paralelo cada ticket tiene que declarar su alcance (## Alcance). Sin alcance: ${blind.map((s) => `#${s.n}`).join(', ')}.`);
+    for (let i = 0; i < scopes.length; i++) for (let j = i + 1; j < scopes.length; j++) {
+      if (overlap(scopes[i].files, scopes[j].files)) fail(`#${scopes[i].n} y #${scopes[j].n} tocan los mismos archivos: van en serie, no en paralelo.`);
+      if (scopes[i].deps.includes(scopes[j].n) || scopes[j].deps.includes(scopes[i].n)) fail(`#${scopes[i].n} y #${scopes[j].n} dependen uno del otro: van en serie.`);
+    }
+  }
+  const pc = preCheck(root);
+  const claude = claudeCmd();
+  const launches = ctxs.map((c) => buildLaunch(root, cfg, role, c, mode, base));
+  const c0 = guard.check(root, launches[0].key, claude, { repeatHours: role === 'auditor' ? 1 : 24 });
+  if (!c0.ok) fail(c0.msg);
+  if (launches.length > 1) {
+    if (c0.info.running.total + launches.length > c0.info.maxConcurrent) fail(`el lote necesita ${launches.length} cupos y hay ${c0.info.maxConcurrent - c0.info.running.total} libres (tope ${c0.info.maxConcurrent}).`);
+    if (c0.info.today + launches.length > c0.info.maxPerDay) fail(`el lote supera el tope de ${c0.info.maxPerDay} lanzamientos en 24 h (${c0.info.today} usados).`);
+    const reg = guard.readReg(root);
+    for (const L of launches.slice(1)) if (reg.some((r) => (r.key || r.slug) === L.key && Date.now() - r.at < 86400000)) fail(`"${L.key}" ya se lanzó en las últimas 24 h.`);
+  }
+  const b = guard.budget(root, launches[0].key);
+  if (!b.ok) fail(b.text);
+  for (const L of launches) {
+    const c = ctxs[launches.indexOf(L)];
+    console.log(`Worker: ${role} ${role === 'auditor' ? `PR #${c.pr.number}` : `#${c.issue.number}`} (${mode}, tamaño ${L.size}, modelo ${L.model || 'por defecto'}, ${L.maxTurns} turnos${L.effort ? `, esfuerzo ${L.effort}` : ''})`);
+    console.log(`  worktree ${L.name} · corrida ${L.id}${L.files.length ? ` · alcance ${L.files.join(', ')}` : ''}`);
+  }
+  console.log(`Cupos: ${c0.info.running.total}/${c0.info.maxConcurrent} en segundo plano, ${c0.info.today}/${c0.info.maxPerDay} lanzadas en 24 h, espera mínima ${c0.info.cooldown} min.`);
+  console.log(`${pc}  ${b.text}`);
+  console.log(`Comando: ${[...claude, ...launches[0].args.map((a) => (a.length > 80 ? a.slice(0, 60) + '…' : a))].join(' ')}`);
+  console.log(`\n--- prompt (${launches[0].text.length} caracteres) ---\n${launches[0].text.slice(0, 1500)}${launches[0].text.length > 1500 ? '\n[…]' : ''}`);
+  if (!has('--launch')) { console.log('\nDry-run: no se lanzó nada. Agregá --launch para lanzar.'); return; }
+  const at = Date.now();
+  for (const L of launches) {
+    const c = ctxs[launches.indexOf(L)];
+    const meta = spawnWorker(root, L, mode, role, c.issue, c.pr, root, { batch: launches.length > 1 ? launches.map((x) => x.key) : undefined });
+    guard.record(root, { key: L.key, kind: 'worker', mode, pid: meta.pid, run: L.id, at });
+  }
+  console.log(`\nLanzado${launches.length > 1 ? `s ${launches.length} workers en paralelo` : ''}. Seguilo con: node "${__filename}" status`);
+}
+
+function resume() {
+  const { root, cfg } = repoContext();
+  const prev = runs(root).find((x) => x.id === get('--run'));
+  if (!prev) fail(`no encuentro la corrida ${get('--run')} (mirá status).`);
+  if (prev.state === 'corriendo') fail(`la corrida ${prev.id} sigue corriendo.`);
+  if (!prev.session || prev.mode !== 'headless') fail('solo se reanudan corridas headless lanzadas con esta versión (tienen --session-id).');
+  const wt = require('../../../hooks/worktree.cjs').plan(root, prev.worktree).dest;
+  if (!fs.existsSync(wt)) fail(`el worktree ${wt} ya no existe: lanzá una corrida nueva sobre el ticket.`);
+  const k = runs(root).filter((x) => x.parent === prev.id || (x.id.startsWith(prev.id + '-r'))).length + 1;
+  const id = `${prev.id}-r${k}`;
+  const runDir = path.join(root, '.dev-flow', 'runs', id);
+  const verdict = prev.role === 'auditor';
+  const text = `Retomá el trabajo interrumpido (${prev.state}). ${verdict ? 'Seguí la auditoría donde quedó, sin repetir lo ya revisado.' : `Leé ${WORK_PROGRESS} (en tu worktree) y seguí desde "Siguiente paso". No rehagas lo que ya está hecho y commiteado.`}\nAl terminar, tu respuesta final es el JSON ${verdict ? 'del veredicto' : 'de la tarjeta de entrega'} completo (se valida con el esquema).\n`;
+  const maxTurns = Number(get('--max-turns') || 40);
+  const args = ['-p', '-r', prev.session, '--add-dir', runDir, ...(prev.ticketDir ? ['--add-dir', prev.ticketDir] : []), '--permission-mode', verdict ? 'default' : ((cfg.workers || {}).permissionMode || 'auto'), '--allowedTools', ((cfg.workers || {}).allowedTools || []).join(','), '--output-format', 'json', '--json-schema', schemaArg(verdict), '--max-turns', String(maxTurns)];
+  const c = guard.check(root, `${prev.key}-r${k}`, claudeCmd(), { repeatHours: 0 });
+  if (!c.ok) fail(c.msg);
+  console.log(`Reanudar ${prev.id} → ${id} en ${wt} (sesión ${prev.session}, ${maxTurns} turnos)`);
+  if (!has('--launch')) { console.log('Dry-run: agregá --launch para reanudar.'); return; }
+  const L = { id, runDir, key: `${prev.key}-r${k}`, ticketN: prev.issue, ticketDir: prev.ticketDir, text, args, name: prev.worktree, size: prev.size, model: prev.model, maxTurns, sessionId: prev.session };
+  const meta = spawnWorker(root, L, 'headless', prev.role, prev.issue ? { number: prev.issue, title: '', body: '' } : null, prev.pr ? { number: prev.pr } : null, wt, { parent: prev.id });
+  guard.record(root, { key: L.key, kind: 'worker', mode: 'headless', pid: meta.pid, run: id });
+  console.log('Reanudado. Seguilo con status.');
+}
+
+let wtMod = null;
+const worktreeMod = () => wtMod || (wtMod = require('../../../hooks/worktree.cjs'));
 
 function runs(root) {
   const dir = path.join(root, '.dev-flow', 'runs');
   if (!fs.existsSync(dir)) return [];
   return fs.readdirSync(dir).sort().reverse().map((id) => {
     const d = path.join(dir, id);
-    let meta = {}; try { meta = JSON.parse(fs.readFileSync(path.join(d, 'meta.json'), 'utf8')); } catch { return null; }
+    const meta = readJson(path.join(d, 'meta.json'));
+    if (!meta) return null;
     const verdict = meta.role === 'auditor';
-    const r = { ...meta, state: 'corriendo', result: null, errors: [] };
-    const outF = path.join(d, 'out.json'), fileF = path.join(d, verdict ? 'verdict.json' : 'card.json');
-    let raw = '';
-    try { raw = fs.readFileSync(outF, 'utf8').trim(); } catch { /* bg */ }
+    const r = { ...meta, state: 'corriendo', result: null, errors: [], out: null };
+    const raw = read(path.join(d, 'out.json')).trim();
+    // Tarjeta en archivo: la que guardó collect en la corrida o la copia de trabajo del worker en su worktree.
+    // Mientras un headless sigue vivo y sin out.json, NO cuenta como terminado aunque ya haya guardado la tarjeta.
+    const candidates = [path.join(d, verdict ? 'verdict.json' : 'card.json')];
+    if (!verdict && meta.worktree) { try { candidates.push(path.join(worktreeMod().plan(root, meta.worktree).dest, dossier.WORK, 'card.json')); } catch { /* nombre raro */ } }
+    const fileF = candidates.find((f) => { try { return fs.statSync(f).mtimeMs >= (meta.at || 0) - 1000; } catch { return false; } });
+    const stillRunning = meta.mode === 'headless' && !raw && guard.alive(meta.pid);
     if (meta.mode === 'headless' && raw) {
       r.state = 'terminado';
-      try { const j = JSON.parse(raw); r.cost = j.total_cost_usd; r.turns = j.num_turns; if (j.is_error || /error/.test(j.subtype || '')) r.state = `error (${j.subtype || 'is_error'})`; } catch { /* no es JSON */ }
+      try { const j = JSON.parse(raw); r.out = j; r.cost = j.total_cost_usd; r.turns = j.num_turns; r.durationMs = j.duration_ms; if (j.is_error || /error/.test(j.subtype || '')) r.state = `error (${j.subtype || 'is_error'})`; } catch { /* no es JSON */ }
       try { r.result = card.extract(raw); } catch (e) { r.errors.push(e.message); }
     }
-    if (!r.result && fs.existsSync(fileF)) { try { r.result = JSON.parse(fs.readFileSync(fileF, 'utf8')); r.state = 'terminado'; } catch (e) { r.errors.push(`${path.basename(fileF)}: ${e.message}`); } }
-    if (meta.mode === 'headless' && !raw && !guard.alive(meta.pid)) { r.state = 'terminó sin salida'; try { r.errors.push(fs.readFileSync(path.join(d, 'err.log'), 'utf8').trim().split('\n').slice(-3).join(' | ')); } catch { /* sin log */ } }
+    if (!r.result && fileF && !stillRunning) { const j = readJson(fileF); if (j) { r.result = j; if (r.state === 'corriendo') r.state = 'terminado'; } }
+    if (meta.mode === 'headless' && !raw && !guard.alive(meta.pid)) { r.state = 'terminó sin salida'; const e = read(path.join(d, 'err.log')).trim(); if (e) r.errors.push(e.split('\n').slice(-3).join(' | ')); }
     if (r.result) r.errors.push(...card.validate(r.result, verdict));
     return r;
   }).filter(Boolean);
 }
 
+// Métricas por corrida terminada (sin contenido): costo, turnos, duración, modelo, permisos denegados, resultado.
+function recordMetrics(root, r) {
+  if (r.state === 'corriendo') return;
+  const f = path.join(root, '.dev-flow', 'metrics.jsonl');
+  if (read(f).includes(`"run":"${r.id}"`)) return;
+  const denials = ((r.out && r.out.permission_denials) || []).map((x) => `${x.tool_name}${x.tool_input && x.tool_input.command ? `(${String(x.tool_input.command).trim().split(/\s+/)[0]})` : ''}`);
+  const res = r.result || {};
+  const m = { run: r.id, at: new Date(r.at).toISOString(), role: r.role, issue: r.issue, pr: r.pr, size: r.size, model: r.model, state: r.state, cost: r.cost ?? null, turns: r.turns ?? null, durationMs: r.durationMs ?? null, denials, valid: !!r.result && !card.validate(r.result, r.role === 'auditor').length,
+    verdict: res.verdict || null, findings: (res.findings || []).map((x) => `${x.severity}:${x.area}`), testsHonest: res.tests_honest || (res.tests ? res.tests.fail_without_change : null), testsPassed: res.tests ? res.tests.passed : null, parent: r.parent || null };
+  fs.mkdirSync(path.dirname(f), { recursive: true });
+  fs.appendFileSync(f, JSON.stringify(m) + '\n');
+}
+
+function oneLine(r) {
+  const what = r.role === 'auditor' ? `PR #${r.pr}` : `#${r.issue}`;
+  const res = r.result ? (r.role === 'auditor' ? `veredicto ${String(r.result.verdict || '?').toUpperCase()}` : `tarjeta: ${(r.result.acceptance || []).filter((a) => a.status === 'cumple').length}/${(r.result.acceptance || []).length} criterios, pruebas ${r.result.tests && r.result.tests.passed ? 'pasan' : 'NO pasan'}, sin el cambio fallan: ${r.result.tests ? r.result.tests.fail_without_change : '?'}`) : '';
+  return `${r.id}  ${r.role.padEnd(11)} ${what.padEnd(7)} ${r.state}${res ? ` — ${res}` : ''}${r.cost ? ` · US$ ${Number(r.cost).toFixed(2)}` : ''}`;
+}
+
 function status() {
-  const root = config.repoRoot(process.cwd());
+  const root = dossier.mainRoot(process.cwd());
   const list = runs(root).filter((r) => Date.now() - r.at < 3 * 86400000);
-  if (has('--json')) { console.log(JSON.stringify(list, null, 2)); return; }
+  for (const r of list) recordMetrics(root, r);
+  if (has('--json')) { console.log(JSON.stringify(list.map(({ out, ...x }) => x), null, 2)); return; }
   if (!list.length) { console.log('No hay corridas de workers en los últimos 3 días.'); return; }
   for (const r of list) {
-    const what = r.role === 'auditor' ? `PR #${r.pr}` : `#${r.issue}`;
-    const res = r.result ? (r.role === 'auditor' ? `veredicto ${String(r.result.verdict || '?').toUpperCase()}` : `tarjeta: ${(r.result.acceptance || []).filter((a) => a.status === 'cumple').length}/${(r.result.acceptance || []).length} criterios, pruebas ${r.result.tests && r.result.tests.passed ? 'pasan' : 'NO pasan'}, sin el cambio fallan: ${r.result.tests ? r.result.tests.fail_without_change : '?'}`) : '';
-    console.log(`${r.id}  ${r.role.padEnd(11)} ${what.padEnd(7)} ${r.state}${res ? ` — ${res}` : ''}${r.cost ? ` · US$ ${r.cost.toFixed(2)}` : ''}`);
+    console.log(oneLine(r));
     for (const e of r.errors.filter(Boolean)) console.log(`    ! ${e}`);
+    if (/max_turns|sin salida/.test(r.state) && r.session) console.log(`    → reanudable: node "${__filename}" resume --run ${r.id} --max-turns 40`);
   }
 }
 
 function collect() {
-  const root = config.repoRoot(process.cwd());
+  const root = dossier.mainRoot(process.cwd());
   const r = runs(root).find((x) => x.id === get('--run'));
   if (!r) fail(`no encuentro la corrida ${get('--run')} (mirá status).`);
   if (!r.result) fail(`la corrida ${r.id} todavía no tiene ${r.role === 'auditor' ? 'veredicto' : 'tarjeta'} (${r.state}).`);
@@ -231,22 +427,133 @@ function collect() {
   const dest = path.join(root, '.dev-flow', verdict ? 'verdicts' : 'cards', `${verdict ? r.pr : r.issue}.json`);
   fs.mkdirSync(path.dirname(dest), { recursive: true });
   fs.writeFileSync(dest, JSON.stringify(r.result, null, 2) + '\n');
+  if (!fs.existsSync(path.join(r.runDir, verdict ? 'verdict.json' : 'card.json'))) fs.writeFileSync(path.join(r.runDir, verdict ? 'verdict.json' : 'card.json'), JSON.stringify(r.result, null, 2) + '\n');
+  recordMetrics(root, r);
+  let rec = null;
+  const ticketN = r.issue;
+  if (ticketN) rec = dossier.record(root, ticketN, r.runDir);
   const md = card.render(r.result, verdict);
-  console.log(`Guardado en ${path.relative(root, dest)}\n\n${md}`);
+  // Solo una línea y rutas: el contenido vive en disco (regla anti teléfono descompuesto).
+  console.log(oneLine(r));
+  console.log(`  guardado: ${path.relative(root, dest)}${rec && rec.report ? ` · expediente: ${path.relative(root, path.join(rec.dir, rec.report))} · índice: ${path.relative(root, path.join(rec.dir, 'index.md'))}` : ''}`);
+  if (has('--show')) console.log(`\n${md}`);
   if (has('--comment')) {
     const f = path.join(r.runDir, 'comment.md'); fs.writeFileSync(f, md);
-    const { gh } = require('../../../lib/gh.cjs');
     gh(verdict ? ['pr', 'comment', String(r.pr), '--body-file', f] : ['issue', 'comment', String(r.issue), '--body-file', f]);
-    console.log(`Comentado en ${verdict ? `el PR #${r.pr}` : `el issue #${r.issue}`}.`);
+    console.log(`  comentado en ${verdict ? `el PR #${r.pr}` : `el issue #${r.issue}`}.`);
+  }
+}
+
+function stats() {
+  const root = dossier.mainRoot(process.cwd());
+  for (const r of runs(root)) recordMetrics(root, r);
+  const days = Number(get('--days') || 30);
+  const since = Date.now() - days * 86400000;
+  const ms = read(path.join(root, '.dev-flow', 'metrics.jsonl')).split('\n').filter(Boolean).map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter((m) => m && Date.parse(m.at) >= since);
+  const by = {};
+  for (const m of ms) (by[m.role] = by[m.role] || []).push(m);
+  const avg = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : null);
+  const roles = Object.entries(by).map(([role, l]) => ({
+    role, runs: l.length, valid: l.filter((m) => m.valid).length, cost: avg(l.map((m) => m.cost).filter((x) => x !== null)), turns: avg(l.map((m) => m.turns).filter((x) => x !== null)),
+    errors: l.filter((m) => /error|sin salida/.test(m.state)).length, resumed: l.filter((m) => m.parent).length,
+    verdicts: l.reduce((a, m) => (m.verdict ? { ...a, [m.verdict]: (a[m.verdict] || 0) + 1 } : a), {}),
+    honest: l.filter((m) => m.testsHonest === 'si').length,
+  }));
+  const tickets = {};
+  for (const m of ms.filter((x) => x.role === 'implementer' && x.issue && !x.parent)) tickets[m.issue] = (tickets[m.issue] || 0) + 1;
+  const rework = Object.entries(tickets).filter(([, n]) => n > 1).map(([t, n]) => `#${t} (${n} implementaciones)`);
+  const den = {};
+  for (const m of ms) for (const d of m.denials || []) den[d] = (den[d] || 0) + 1;
+  const findings = {};
+  for (const m of ms) for (const f of m.findings || []) findings[f] = (findings[f] || 0) + 1;
+  const outp = { days, runs: ms.length, cost: ms.reduce((a, m) => a + (m.cost || 0), 0), roles, rework, denials: Object.entries(den).sort((a, b) => b[1] - a[1]), findings: Object.entries(findings).sort((a, b) => b[1] - a[1]) };
+  if (has('--json')) { console.log(JSON.stringify(outp, null, 2)); return; }
+  if (!ms.length) { console.log(`Sin corridas en los últimos ${days} días.`); return; }
+  console.log(`Workers en los últimos ${days} días: ${ms.length} corrida(s), US$ ${outp.cost.toFixed(2)} en total.\n`);
+  for (const r of roles) console.log(`${r.role.padEnd(11)} ${String(r.runs).padStart(3)} corridas · ${r.valid}/${r.runs} con salida válida · US$ ${r.cost !== null ? r.cost.toFixed(2) : '?'} y ${r.turns !== null ? Math.round(r.turns) : '?'} turnos promedio${r.errors ? ` · ${r.errors} cortadas` : ''}${r.resumed ? ` · ${r.resumed} reanudadas` : ''}${r.role === 'auditor' ? ` · ${Object.entries(r.verdicts).map(([k, v]) => `${k} ${v}`).join(', ')}` : ` · pruebas honestas ${r.honest}/${r.runs}`}`);
+  if (rework.length) console.log(`\nRetrabajo: ${rework.join(', ')}`);
+  if (outp.denials.length) console.log(`\nPermisos denegados (candidatos para workers.allowedTools): ${outp.denials.slice(0, 8).map(([d, n]) => `${d} ×${n}`).join(', ')}`);
+  if (outp.findings.length) console.log(`\nHallazgos más repetidos del auditor: ${outp.findings.slice(0, 6).map(([f, n]) => `${f} ×${n}`).join(', ')}  (dispatch memory propose)`);
+}
+
+// Plan del Tech Lead: oleadas de tickets. rehydrate lo reinyecta tras compactar.
+function plan() {
+  const root = dossier.mainRoot(process.cwd());
+  const f = path.join(root, '.dev-flow', 'plan.json');
+  if (argv[1] === 'set') {
+    const spec = argv[2];
+    if (!spec || !/^[\d,\s|]+$/.test(spec)) fail('Uso: plan set "12,13 | 14 | 15" [--goal "objetivo"]');
+    const waves = spec.split('|').map((w) => w.split(',').map((x) => Number(x.trim())).filter(Boolean)).filter((w) => w.length);
+    const p = { goal: get('--goal') || (readJson(f) || {}).goal || '', waves, updated: new Date().toISOString() };
+    fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, JSON.stringify(p, null, 2) + '\n');
+    console.log(`Plan guardado: ${waves.map((w, i) => `ola ${i + 1}: ${w.map((n) => `#${n}`).join(', ')}`).join(' · ')}`);
+  } else {
+    const p = readJson(f);
+    if (!p) { console.log('No hay plan guardado (plan set "12,13 | 14").'); return; }
+    process.stdout.write(planSummary(root, p));
+  }
+}
+function planSummary(root, p) {
+  const all = runs(root);
+  const st = (n) => {
+    const v = readJson(path.join(root, '.dev-flow', 'cards', `${n}.json`));
+    const mine = all.filter((r) => r.issue === n);
+    const audit = mine.find((r) => r.role === 'auditor' && r.result);
+    if (audit) return `auditado: ${audit.result.verdict}`;
+    if (mine.some((r) => r.state === 'corriendo')) return 'worker corriendo';
+    if (v) return 'tarjeta recogida';
+    return mine.length ? mine[0].state : 'sin lanzar';
+  };
+  return [`Plan${p.goal ? `: ${p.goal}` : ''} (actualizado ${String(p.updated).slice(0, 16).replace('T', ' ')})`, ...p.waves.map((w, i) => `  ola ${i + 1}: ${w.map((n) => `#${n} ${st(n)}`).join(' · ')}`)].join('\n') + '\n';
+}
+
+// Memoria por rol: lecciones cortas, aprobadas por una persona o el Tech Lead, que se suman al system prompt del rol.
+function memory() {
+  const root = dossier.mainRoot(process.cwd());
+  const dir = path.join(root, '.dev-flow', 'memory');
+  const sub = argv[1];
+  if (sub === 'add') {
+    const role = get('--role');
+    const text = argv.slice(2).filter((x, i, a) => x !== '--role' && a[i - 1] !== '--role').join(' ').trim();
+    if (![...ROLES, 'explorer'].includes(role)) fail('memory add --role implementer|auditor|sre|docs|explorer "lección"');
+    if (text.length < 15 || text.length > 300) fail('la lección tiene que tener entre 15 y 300 caracteres: concreta y verificable.');
+    const f = path.join(dir, `${role}.md`);
+    fs.mkdirSync(dir, { recursive: true });
+    const cur = read(f) || `# Memoria del rol ${role}\n\nLecciones aprobadas para este repo. Se suman al system prompt del rol (máximo 40 líneas; condensá antes de agregar).\n\n`;
+    if ((cur.match(/^\s*-\s+/gm) || []).length >= 40) fail(`${path.relative(root, f)} ya tiene 40 lecciones: condensá antes de agregar.`);
+    fs.writeFileSync(f, `${cur.replace(/\s*$/, '\n')}- ${text} (${new Date().toISOString().slice(0, 10)})\n`);
+    console.log(`Agregada a ${path.relative(root, f)}.`);
+  } else if (sub === 'propose') {
+    const ms = read(path.join(root, '.dev-flow', 'metrics.jsonl')).split('\n').filter(Boolean).map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+    const verdicts = fs.existsSync(path.join(root, '.dev-flow', 'verdicts')) ? fs.readdirSync(path.join(root, '.dev-flow', 'verdicts')).map((f) => readJson(path.join(root, '.dev-flow', 'verdicts', f))).filter(Boolean) : [];
+    const byArea = {};
+    for (const v of verdicts) for (const x of v.findings || []) if (x.severity !== 'P2') (byArea[x.area] = byArea[x.area] || []).push(`${x.issue} (${x.where})`);
+    const den = {};
+    for (const m of ms) for (const d of m.denials || []) den[d] = (den[d] || 0) + 1;
+    const L = ['# Propuestas de memoria (no se aplican solas)', '', `Generado ${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC a partir de veredictos y métricas. Aprobá con: dispatch memory add --role <rol> "<lección>"`, ''];
+    const rep = Object.entries(byArea).filter(([, l]) => l.length >= 2).sort((a, b) => b[1].length - a[1].length);
+    if (rep.length) { L.push('## Para implementer (hallazgos que se repiten en las auditorías)', ''); for (const [area, l] of rep) L.push(`- [${area}] apareció ${l.length} veces. Ejemplos: ${l.slice(0, 2).join('; ')}`); L.push(''); }
+    const dd = Object.entries(den).filter(([, n]) => n >= 2);
+    if (dd.length) { L.push('## Para la configuración (permisos denegados repetidos → workers.allowedTools)', ''); for (const [d, n] of dd) L.push(`- ${d} denegado ${n} veces`); L.push(''); }
+    if (!rep.length && !dd.length) L.push('Todavía no hay patrones repetidos (hacen falta al menos dos apariciones).');
+    fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(path.join(dir, 'proposals.md'), L.join('\n') + '\n');
+    console.log(`Propuestas en ${path.relative(root, path.join(dir, 'proposals.md'))} (${rep.length} de hallazgos, ${dd.length} de permisos). Ninguna se aplica sin aprobación.`);
+  } else {
+    const roles = get('--role') ? [get('--role')] : [...ROLES, 'explorer'];
+    for (const r of roles) { const m = memoryOf(root, r); console.log(`## ${r}\n${m || '(sin lecciones)'}\n`); }
   }
 }
 
 if (require.main === module) {
   try {
     if (cmd === 'run') run();
+    else if (cmd === 'resume') resume();
     else if (cmd === 'status') status();
     else if (cmd === 'collect') collect();
-    else { console.error('Uso: node dispatch.cjs run --issue N --role implementer|sre|docs | run --pr P --role auditor | status | collect --run <id>'); process.exit(2); }
+    else if (cmd === 'stats') stats();
+    else if (cmd === 'plan') plan();
+    else if (cmd === 'memory') memory();
+    else { console.error('Uso: node dispatch.cjs run|resume|status|collect|stats|plan|memory (ver encabezado)'); process.exit(2); }
   } catch (e) { console.error(e.message); process.exit(1); }
 }
-module.exports = { prompt, runs, claudeCmd };
+module.exports = { prompt, runs, claudeCmd, scopeOf, overlap, planSummary };

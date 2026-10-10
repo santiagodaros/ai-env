@@ -39,6 +39,9 @@ docs/                             este archivo, PRUEBA-REAL.md, ejemplos de CLAU
 | La salida de un worker es un JSON validado | Una tarjeta en texto libre no se puede verificar. `--json-schema` en `claude -p` la valida al salir; `card.cjs verify` la contrasta con el repo (archivos reales, pruebas) |
 | El hook de worktrees es idempotente y nativo por defecto | Un `WorktreeCreate` de plugin aplica a subagentes pero no al flag `-w`, que solo lee hooks de settings; el mismo script se registra en ambos lados sin crear dos worktrees. Sin configuración se comporta como Claude Code (`<repo>/.claude/worktrees`), porque al instalarse reemplaza la creación nativa para todos |
 | Lo que genera un worker va a `.dev-flow/`, no a `.claude/` | Claude Code protege `.claude/` de escrituras: un worker headless no puede guardar ahí su tarjeta |
+| Memoria en tres capas, escrita por scripts | El expediente por ticket (hilo), el mapa del código y la memoria por rol. El índice del expediente y las métricas los genera un script; la memoria por rol solo cambia con aprobación. Así lo que lee el siguiente agente es corto y no lo puede envenenar un worker |
+| Se evalúa el destino, no el camino | `harness.cjs check --end` y las evals del arnés califican el estado final con chequeos objetivos; los workers pueden llegar por caminos distintos |
+| El Tech Lead recibe referencias | `collect`, `status` y `lead-notify` devuelven una línea y rutas. Pasar contenido de agente en agente degrada la información y llena el contexto del orquestador |
 | Un solo cupo para features y workers | `launch.cjs` y `dispatch.cjs` comparten `lib/launch-guard.cjs` y el registro: no se duplica el gasto lanzando por dos caminos |
 
 ## Lo que un plugin no puede llevar

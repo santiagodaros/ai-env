@@ -48,6 +48,7 @@ if (a[0] === 'pr' && a[1] === 'view') { const p = st.prs.find((x) => x.number ==
 if (a[0] === 'pr' && a[1] === 'diff') out(process.env.FAKE_GH_DIFF || '');
 if (a[0] === 'pr' && a[1] === 'checks') out('build\tpass\t1m\thttps://x');
 if (a[0] === 'pr' && a[1] === 'comment') out('');
+if (a[0] === 'issue' && a[1] === 'comment') out('');
 process.stderr.write(`gh-fake: comando no soportado: ${a.join(' ')}`);
 save();
 process.exit(1);

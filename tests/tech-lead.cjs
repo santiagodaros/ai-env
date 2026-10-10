@@ -180,7 +180,7 @@ console.log(JSON.stringify({type:'result',subtype:'success',is_error:false,total
   run(T, ['create', 'F-01'], { cwd: r4, env: env4 });
   const D = K('dispatch', 'dispatch.cjs');
   r = run(D, ['run', '--issue', '1', '--role', 'implementer'], { cwd: r4, env: env4 });
-  check('dispatch: el dry-run muestra cupos, worktree del ticket y prompt sin lanzar nada', r.code === 0 && /Dry-run/.test(r.out) && /Worktree: feat-1-resta/.test(r.out) && /Cupos: 0\/2/.test(r.out) && !fs.existsSync(clog));
+  check('dispatch: el dry-run muestra cupos, worktree del ticket y prompt sin lanzar nada', r.code === 0 && /Dry-run/.test(r.out) && /worktree feat-1-resta/.test(r.out) && /Cupos: 0\/2/.test(r.out) && !fs.existsSync(clog));
   check('dispatch: el prompt lleva el ticket (rebanada del PRD) y no el PRD completo', /\[F-01\] Resta/.test(r.out) && !/\[F-02\] Multiplicación/.test(r.out));
   r = run(D, ['run', '--issue', '1', '--role', 'implementer', '--launch'], { cwd: r4, env: env4 });
   for (let i = 0; i < 50 && !(fs.existsSync(clog) && /STDIN/.test(fs.readFileSync(clog, 'utf8'))); i++) spawnSync(process.execPath, ['-e', 'setTimeout(()=>{},100)']);

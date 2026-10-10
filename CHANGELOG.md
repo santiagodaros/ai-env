@@ -2,6 +2,10 @@
 
 Cada plugin tiene su versión y cada publicación su tag `<plugin>--v<versión>`. Acá va lo que cambia para quien los usa.
 
+## 2026-10-10 — dev-flow 1.2.0
+
+- Arnés de agentes: chequeos del arnés (pre, worker, cierre), lead-guard, aviso asíncrono de workers, reanudación por sesión, expediente por ticket con índice y resumen versionable, tamaño S/M/L que fija modelo y turnos, explorer, codemap, lotes paralelos con chequeo de alcance, plan persistente, métricas, memoria por rol aprobada por el usuario y evals con workers reales
+
 ## 2026-10-10 — app-review 1.0.1
 
 - Corrige el frontmatter de api-call-rules y frontend-rules: la descripción sin comillas rompía el YAML y podía anular paths y user-invocable
