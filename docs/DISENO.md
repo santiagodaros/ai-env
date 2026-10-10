@@ -35,6 +35,11 @@ docs/                             este archivo, PRUEBA-REAL.md, ejemplos de CLAU
 | Lo determinista va en scripts, lo redactado en skills | Decidir si un cambio es chico, si una arquitectura está aprobada o si un plan destruye datos no puede depender del criterio del modelo en ese momento |
 | Skills manuales por defecto | Una skill que se activa sola ocupa contexto en cada sesión y puede dispararse cuando no corresponde. Solo son automáticas las que tienen un disparador claro, y esas tienen eval |
 | Las aprobaciones las da una persona fuera de Claude | Aprobar la arquitectura, aceptar un riesgo o hacer push son decisiones con dueño. Los hooks impiden que Claude las tome |
+| Tech Lead + workers: el rol va como system prompt, no con `--agent` | En `claude -p`, `--agent` no resuelve agentes de plugin. `dispatch` lee `agents/<rol>.md` y pasa el cuerpo con `--append-system-prompt`, el frontmatter como `--disallowedTools` y `--model`. Los mismos archivos sirven como subagentes en la sesión del Tech Lead |
+| La salida de un worker es un JSON validado | Una tarjeta en texto libre no se puede verificar. `--json-schema` en `claude -p` la valida al salir; `card.cjs verify` la contrasta con el repo (archivos reales, pruebas) |
+| El hook de worktrees es idempotente y nativo por defecto | Un `WorktreeCreate` de plugin aplica a subagentes pero no al flag `-w`, que solo lee hooks de settings; el mismo script se registra en ambos lados sin crear dos worktrees. Sin configuración se comporta como Claude Code (`<repo>/.claude/worktrees`), porque al instalarse reemplaza la creación nativa para todos |
+| Lo que genera un worker va a `.dev-flow/`, no a `.claude/` | Claude Code protege `.claude/` de escrituras: un worker headless no puede guardar ahí su tarjeta |
+| Un solo cupo para features y workers | `launch.cjs` y `dispatch.cjs` comparten `lib/launch-guard.cjs` y el registro: no se duplica el gasto lanzando por dos caminos |
 
 ## Lo que un plugin no puede llevar
 

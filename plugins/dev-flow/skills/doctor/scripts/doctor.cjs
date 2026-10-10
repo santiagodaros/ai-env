@@ -54,6 +54,20 @@ const mk = (us.extraKnownMarketplaces || {})['ai-env'] || (ps.extraKnownMarketpl
 if (!mk) add('AVISO', 'marketplace ai-env no declarado en settings', 'claude plugin marketplace add santiagodaros/ai-env');
 else add(mk.autoUpdate === true ? 'OK' : 'AVISO', 'actualización automática del marketplace', mk.autoUpdate === true ? 'activa' : 'apagada: esta máquina queda en el commit instalado. Corré /dev-flow:setup');
 
+// Forma de trabajo Tech Lead + workers (solo si el repo la usa: .claude/dev-flow.json o docs/PRD.md)
+if (fs.existsSync(path.join(cwd, '.claude', 'dev-flow.json')) || fs.existsSync(path.join(cwd, 'docs', 'PRD.md'))) {
+  const ghv = ver('gh', ['--version']);
+  add(ghv ? 'OK' : 'AVISO', 'GitHub CLI (gh) para tickets y PRs', ghv || 'instalalo (winget install GitHub.cli) y corré gh auth login');
+  if (ghv) { const a = spawnSync('gh', ['auth', 'status'], { encoding: 'utf8', shell: process.platform === 'win32' }); add(a.status === 0 ? 'OK' : 'AVISO', 'gh autenticado', a.status === 0 ? '' : 'corré gh auth login'); }
+  const wtHook = JSON.stringify((us.hooks || {}).WorktreeCreate || []).includes('ai-env/worktree/hooks/worktree.cjs');
+  add(wtHook ? 'OK' : 'INFO', 'worktrees de claude -w fuera del repo', wtHook ? 'hook de usuario instalado' : 'opcional: /dev-flow:setup --worktrees (dispatch ya lo pasa por --settings)');
+  const prd = path.join(cwd, 'docs', 'PRD.md');
+  if (fs.existsSync(prd)) {
+    const r = spawnSync(process.execPath, [path.join(__dirname, '..', '..', 'prd', 'scripts', 'prd.cjs'), 'check', '--dir', cwd], { encoding: 'utf8' });
+    add(r.status === 0 ? 'OK' : 'AVISO', 'PRD sin ids repetidos ni citas rotas', (r.stdout || '').trim().split('\n').pop());
+  }
+}
+
 // Statusline y presupuesto
 const sl = path.join(home, '.claude', 'ai-env', 'statusline.cjs');
 const cmd = us.statusLine && us.statusLine.command || '';

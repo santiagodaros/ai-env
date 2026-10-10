@@ -1,6 +1,6 @@
 ---
 name: frontend-rules
-description: Reglas de seguridad para componentes React (.tsx): variables de entorno públicas, login con PKCE, almacenamiento de tokens, HTML sin sanitizar y autorización del lado servidor. Aplicar al escribir o revisar componentes.
+description: "Reglas de seguridad para componentes React (.tsx): variables de entorno públicas, login con PKCE, almacenamiento de tokens, HTML sin sanitizar y autorización del lado servidor. Aplicar al escribir o revisar componentes."
 user-invocable: false
 paths:
   - "**/*.tsx"

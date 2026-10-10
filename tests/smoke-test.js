@@ -75,12 +75,17 @@ for (const plug of [GD, AR, DF, path.join(P, 'cloud-ops')]) {
   if (bash) {
     const stdins = { SessionStart: '{"source":"startup"}', PreToolUse: '{"tool_name":"Write","tool_input":{}}', Stop: '{"stop_hook_active":true}' };
     const root = plug.replace(/\\/g, '/');
+    // Los hooks de worktrees necesitan un repo git y un nombre: se prueban crear y borrar de verdad.
+    const wtRepo = fs.mkdtempSync(path.join(os.tmpdir(), 'aienv-wtrepo-'));
+    for (const a of [['init', '-q'], ['config', 'user.email', 't@example.com'], ['config', 'user.name', 't'], ['commit', '-q', '--allow-empty', '-m', 'i']]) spawnSync('git', a, { cwd: wtRepo });
     for (const { ev, h } of all) {
-      const r = spawnSync(bash, ['-c', h.command.split('${CLAUDE_PLUGIN_ROOT}').join(root)], { input: stdins[ev] || '{}', encoding: 'utf8', cwd: emptyProj, env: { ...process.env, CLAUDE_PROJECT_DIR: emptyProj, CLAUDE_PLUGIN_ROOT: root, AI_ENV_HOME: emptyProj } });
+      const wt = ev.startsWith('Worktree');
+      const r = spawnSync(bash, ['-c', h.command.split('${CLAUDE_PLUGIN_ROOT}').join(root)], { input: wt ? JSON.stringify({ cwd: wtRepo, name: 'e2e-hook' }) : stdins[ev] || '{}', encoding: 'utf8', cwd: wt ? wtRepo : emptyProj, env: { ...process.env, CLAUDE_PROJECT_DIR: emptyProj, CLAUDE_PLUGIN_ROOT: root, AI_ENV_HOME: emptyProj } });
       const out = `${r.stdout || ''}${r.stderr || ''}`.trim().replace(/\s+/g, ' ').slice(0, 200);
       lastOut = out;
-      check(`${name}: el hook ${ev} corre end-to-end (${path.basename((h.command.match(/([\w-]+\.cjs)/) || [])[1] || '')})`, r.status === 0, `exit=${r.status}`);
+      check(`${name}: el hook ${ev} corre end-to-end (${path.basename((h.command.match(/([\w-]+\.cjs)/) || [])[1] || '')})`, r.status === 0 && (ev !== 'WorktreeCreate' || fs.existsSync((r.stdout || '').trim())), `exit=${r.status}`);
     }
+    fs.rmSync(wtRepo, { recursive: true, force: true });
   }
 }
 
@@ -264,7 +269,7 @@ fs.appendFileSync(process.env.FAKE_LOG,JSON.stringify(a)+'\\n');console.log('id 
   check('launch: el techo fijo gana a la configuración', (() => {
     fs.mkdirSync(path.join(d, '.claude'), { recursive: true });
     fs.writeFileSync(path.join(d, '.claude', 'feature-flow.json'), '{"maxConcurrent":99}');
-    return L(d, ['--slug', 'foo', '--launch'], { FAKE_AGENTS: bg(3) }).code === 1;
+    return L(d, ['--slug', 'foo', '--launch'], { FAKE_AGENTS: bg(4) }).code === 1;
   })());
   fs.rmSync(path.join(d, '.claude', 'feature-flow.json'));
   r = L(d, ['--slug', 'foo', '--launch'], { FAKE_AGENTS: bg(1) });
@@ -564,7 +569,7 @@ if (fs.existsSync(SU) && fs.existsSync(DR)) {
 const fm = (p) => fs.existsSync(p) && fs.readFileSync(p, 'utf8').replace(/^\uFEFF/, '').startsWith('---');
 const expected = {
   'arch': ['arch-first', 'adr'],
-  'dev-flow': ['feature-flow', 'feature-run', 'feature-close', 'quick-fix', 'budget-plan', 'spec-interview', 'pr-prep', 'security-diff', 'project-init', 'setup', 'doctor'],
+  'dev-flow': ['feature-flow', 'feature-run', 'feature-close', 'quick-fix', 'budget-plan', 'spec-interview', 'pr-prep', 'security-diff', 'project-init', 'setup', 'doctor', 'prd', 'ticket', 'dispatch', 'audit'],
   'app-review': ['app-architecture-review', 'api-call-rules', 'frontend-rules'],
   'cloud-ops': ['context-ledger', 'azure-claim-check', 'client-deliverables', 'deliverable-review', 'azure-inventory-kql', 'iac-change-review'],
   'front-studio': ['redesign', 'brand-intake', 'product-map', 'design-direction', 'live-preview', 'react-port', 'ui-review', 'security-reaudit', 'style-quiz', 'page-kit', 'ui-options', 'preview-setup'],
@@ -575,6 +580,28 @@ for (const [plug, skills] of Object.entries(expected)) {
   check(`${plug}: ${skills.length} skills con frontmatter`, miss.length === 0);
 }
 for (const a of ['reviewer', 'explorer']) check(`app-review: subagente ${a}`, fm(path.join(P, 'app-review', 'agents', `${a}.md`)));
+for (const a of ['implementer', 'auditor', 'sre', 'docs']) check(`dev-flow: subagente ${a}`, fm(path.join(P, 'dev-flow', 'agents', `${a}.md`)));
+{
+  // YAML del frontmatter: un valor sin comillas no puede llevar ": " ni " #" (rompe el parseo y Claude Code ignora
+  // todos los campos, incluidos disable-model-invocation y paths).
+  const broken = [];
+  for (const d of fs.readdirSync(P)) for (const sub of ['skills', 'agents']) {
+    const base = path.join(P, d, sub); if (!fs.existsSync(base)) continue;
+    const files = sub === 'skills' ? fs.readdirSync(base).map((s) => path.join(base, s, 'SKILL.md')) : fs.readdirSync(base).filter((f) => f.endsWith('.md')).map((f) => path.join(base, f));
+    for (const f of files.filter((x) => fs.existsSync(x))) {
+      const m = fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n').match(/^---\n([\s\S]*?)\n---\n/);
+      if (!m) { broken.push(`${path.relative(P, f)}: sin frontmatter`); continue; }
+      for (const line of m[1].split('\n')) {
+        const kv = line.match(/^([\w-]+):\s+(.*)$/); if (!kv) continue;
+        const v = kv[2].trim();
+        if (/^["'>|\[{]/.test(v)) continue;
+        if (/:\s/.test(v) || /\s#/.test(v)) broken.push(`${path.relative(P, f)}: ${kv[1]}`);
+      }
+    }
+  }
+  lastOut = broken.join(' | ');
+  check('skills y agentes: el frontmatter es YAML válido (valores con ": " entre comillas)', broken.length === 0);
+}
 {
   const mk = JSON.parse(fs.readFileSync(path.join(P, '..', '.claude-plugin', 'marketplace.json'), 'utf8'));
   const dirs = fs.readdirSync(P).filter((d) => fs.existsSync(path.join(P, d, '.claude-plugin', 'plugin.json'))).sort();
@@ -872,6 +899,12 @@ process.exit(0);`);
   const names = fs.readdirSync(P).filter((d) => fs.existsSync(path.join(P, d, '.claude-plugin', 'plugin.json')));
   check('instalador: ambos instalan por defecto todos los plugins que existen', names.every((n) => sh.includes(n) && ps.toString().includes(`'${n}'`)));
 }
+
+// --- dev-flow: forma de trabajo Tech Lead + workers
+require('./tech-lead.cjs')({
+  check, add,
+  run: (script, argv = [], o = {}) => { const r = spawnSync(process.execPath, [script, ...argv], { encoding: 'utf8', cwd: o.cwd, env: { ...process.env, ...o.env } }); lastOut = `${r.stdout || ''}${r.stderr || ''}`; return { code: r.status, out: lastOut }; },
+});
 
 // --- front-studio: analizadores, plan, quiz, kit de página, launch.json y capturas
 require('./front-studio.cjs')({

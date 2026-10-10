@@ -2,6 +2,14 @@
 
 Cada plugin tiene su versión y cada publicación su tag `<plugin>--v<versión>`. Acá va lo que cambia para quien los usa.
 
+## 2026-10-10 — app-review 1.0.1
+
+- Corrige el frontmatter de api-call-rules y frontend-rules: la descripción sin comillas rompía el YAML y podía anular paths y user-invocable
+
+## 2026-10-10 — dev-flow 1.1.0
+
+- Forma de trabajo Tech Lead + workers: skills prd (PRD en rebanadas por id), ticket (issues desde el PRD, PR con Closes #N y tarjeta, estado generado desde GitHub), dispatch (workers efímeros headless con salida validada por esquema) y audit (diff adversarial y honestidad de las pruebas); subagentes implementer, auditor, sre y docs; hook de worktrees fuera del repo con cierre seguro de procesos y gc; project-init --agents, setup --worktrees; topes compartidos con techos 4/20/2
+
 ## 2026-10-10 — front-studio 2.0.0
 
 - Crítica y rediseño de UI con números verificables: detector de look de IA, accesibilidad WCAG estática, score de performance (laboratorio en Chromium con --url), plan de trabajo con issues, quiz de estilo, kit por página (OKLCH, AA verificado, Tailwind v4, DTCG), ui-options con tres direcciones más la estándar en una página con selector, preview-setup (launch.json y capturas antes/después), tipos de superficie y rutas de scripts corregidas

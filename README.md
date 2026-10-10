@@ -51,7 +51,7 @@ Y una vez por repo: `/dev-flow:project-init`. Con `--settings` deja el marketpla
 |---|---|---|
 | [`guard`](plugins/guard/README.md) | 3 hooks de protección: secretos, archivos protegidos y comandos con impacto. Sirve en cualquier repo, sin configuración | 0 tokens |
 | [`arch`](plugins/arch/README.md) | 2 skills y 2 hooks: arquitectura hexagonal aprobada por una persona antes del código, y registro de decisiones | ~280 tokens |
-| [`dev-flow`](plugins/dev-flow/README.md) | 11 skills manuales y 3 hooks: features, camino corto, compuertas, cierre y presupuesto. Instala `arch` como dependencia | hasta ~1.400 tokens |
+| [`dev-flow`](plugins/dev-flow/README.md) | 15 skills, 4 subagentes y 5 hooks: features, camino corto, compuertas, cierre, presupuesto y la forma de trabajo **Tech Lead + workers** (PRD en rebanadas, tickets en GitHub, workers efímeros en worktrees, tarjeta de entrega y auditoría zero-trust). Instala `arch` como dependencia | ~1.850 tokens |
 | [`app-review`](plugins/app-review/README.md) | 3 skills y 2 subagentes de revisión | ~600 tokens |
 | [`cloud-ops`](plugins/cloud-ops/README.md) | 6 skills de Azure, verificación de Terraform, Bicep y PowerShell, y el servidor MCP de Microsoft Learn | ~890 tokens |
 | [`front-studio`](plugins/front-studio/README.md) | 12 skills de crítica y rediseño de UI (kit por página, opciones, accesibilidad, performance, look de IA, plan de trabajo) y re-auditoría de seguridad | ~890 tokens |
@@ -66,6 +66,7 @@ Cada plugin tiene su propio README con el detalle de skills, hooks, configuraci�
 | Repo nuevo o recién clonado | `/dev-flow:project-init` (con `--settings` deja los plugins declarados para quien clone el repo) |
 | Programa, página o automatización nueva | `/arch:arch-first`: no se escribe código hasta que apruebes la arquitectura |
 | Feature | `/dev-flow:feature-run`. Al abrir una sesión en su rama, Claude ya sabe la etapa y el paso siguiente |
+| Trabajar como orquestador (Tech Lead + workers) | Una vez: `/dev-flow:project-init` con `--agents` y `/dev-flow:setup --worktrees`. Después, `/dev-flow:dispatch`: PRD → tickets → workers → auditoría |
 | Arreglo puntual | `/dev-flow:quick-fix` |
 | Cambio de infraestructura | Pedilo normalmente: `iac-change-review` resume el plan antes de aplicar e `iac-verify` valida al terminar |
 | UI existente para criticar o rediseñar | `/front-studio:ui-options`: puntajes, plan de trabajo con issues y tres direcciones más la estándar |
@@ -90,6 +91,7 @@ Variables de entorno del proceso de Claude Code (no de los comandos que corre Cl
 | Statusline | El `settings.json` de un plugin solo admite `agent` y `subagentStatusLine` | `/dev-flow:setup` la instala una vez; `rehydrate` la mantiene al día |
 | Permisos (`deny`) | No se distribuyen por plugin | Los hooks `secret-read` y `bash-guard` |
 | `.claude/launch.json` (panel de preview) | Es configuración por proyecto | `/front-studio:preview-setup` lo genera |
+| Hook `WorktreeCreate` para `claude -w` | Un hook de plugin solo aplica a subagentes; el flag `-w` lee los de settings | `/dev-flow:setup --worktrees`; `dispatch` lo pasa con `--settings` |
 | `CLAUDE.md` y `rules/` | Un `CLAUDE.md` en la raíz del plugin no se carga | Las reglas son skills con `paths`; `project-init` completa el `CLAUDE.md` del repo. Ejemplos en `docs/examples/` |
 
 ## Verificación

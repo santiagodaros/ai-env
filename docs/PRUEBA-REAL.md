@@ -143,6 +143,34 @@ node "<carpeta de cloud-ops>\skills\iac-change-review\scripts\plan-summary.cjs" 
 - [ ] el resumen coincide con el plan real
 - [ ] lo mismo con un what-if real de Bicep (`az deployment group what-if ... --no-pretty-print > whatif.json`)
 
+## 5c. Tech Lead + workers (en un repo de prueba en GitHub)
+
+Necesita `gh` autenticado (`gh auth status`) y un repo **de prueba** tuyo en GitHub, clonado. Verificado en Linux con Claude Code 2.1.296 (implementador → tarjeta → PR → auditor); falta Windows, y sobre todo la limpieza de worktrees con procesos abiertos.
+
+```powershell
+gh repo create ai-env-tl-test --private --clone; cd ai-env-tl-test
+npm init -y; npm pkg set scripts.test="node --test"
+git add -A; git commit -m init; git push -u origin main
+claude
+```
+
+| # | Qué hacer | Esperado |
+|---|---|---|
+| 5c.1 | `/dev-flow:project-init` y aceptá `--agents` | Crea `.claude/dev-flow.json`, `docs/PRD.md`, `docs/ESTADO.md`, `docs/CHANGELOG.md`, `.claude/prompts/` y el bloque de CLAUDE.md |
+| 5c.2 | `/dev-flow:setup --worktrees` | Registra el hook de worktrees en tus settings; `/dev-flow:doctor` lo muestra en OK |
+| 5c.3 | En otra terminal: `claude -w feat-1-prueba` y adentro `pwd` y `git branch --show-current` | `C:\Users\<vos>\worktrees\ai-env-tl-test\feat-1-prueba` y rama `feat/1-prueba` |
+| 5c.4 | Completá F-01 del PRD (una función chica con 2 criterios) y pedí: "creá el ticket de F-01" | `ticket.cjs create F-01`: issue con la rebanada, criterios y etiquetas `prd:F-01`, `estado:listo` |
+| 5c.5 | "Lanzá un implementer para el ticket 1" | Primero el dry-run; con `--launch` **pide confirmación**. Después, `dispatch.cjs status` muestra `terminado` con la tarjeta |
+| 5c.6 | "Recogé la tarjeta y abrí el PR" | `collect` + `ticket.cjs pr 1 --card ... --push`: PR con `Closes #1` y la tarjeta |
+| 5c.7 | "Auditá el PR" | Auditor headless con veredicto; `collect --comment` lo publica en el PR |
+| 5c.8 | Abrí VS Code o una terminal con `npm test --watch` **dentro** del worktree del ticket y corré `node <carpeta de dev-flow>\hooks\worktree.cjs remove-path <ruta del worktree>` | Cierra solo esos procesos (Claude Code sigue vivo), borra el worktree **sin EPERM** |
+| 5c.9 | Mergeá el PR en GitHub, `git pull` y `node <carpeta de dev-flow>\hooks\worktree.cjs gc --apply` | Borra el worktree y la rama local del ticket ya mergeado |
+| 5c.10 | `node <carpeta de dev-flow>\skills\ticket\scripts\estado.cjs --write` | `docs/ESTADO.md` con cobertura del PRD 1/1 y el PR mergeado |
+
+- [ ] 5c.1 - [ ] 5c.2 - [ ] 5c.3 - [ ] 5c.4 - [ ] 5c.5 - [ ] 5c.6 - [ ] 5c.7 - [ ] 5c.8 - [ ] 5c.9 - [ ] 5c.10
+
+En 5c.5 anotá el costo que informa `status` y si el worker tuvo que pedir algún permiso (en headless no puede: si se trabó, ajustá `workers.allowedTools` o `workers.permissionMode` en `.claude/dev-flow.json`). En 5c.8, si queda algo trabado, anotá qué proceso era (`Get-Process | Where-Object Path -like "*worktrees*"`).
+
 ## 6. Skills que se activan solas
 
 Sin nombrar la skill:

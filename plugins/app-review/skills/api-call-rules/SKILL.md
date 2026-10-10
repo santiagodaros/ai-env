@@ -1,6 +1,6 @@
 ---
 name: api-call-rules
-description: Reglas para código TypeScript que llama a APIs de Microsoft (Cost Management, Partner Center, Graph, ARM) o accede a datos: caché y throttling, reintentos, managed identity y autorización por cliente. Aplicar al escribir o revisar ese código.
+description: "Reglas para código TypeScript que llama a APIs de Microsoft (Cost Management, Partner Center, Graph, ARM) o accede a datos: caché y throttling, reintentos, managed identity y autorización por cliente. Aplicar al escribir o revisar ese código."
 user-invocable: false
 paths:
   - "**/*.ts"

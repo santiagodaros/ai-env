@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // SessionStart: reinyecta contexto desde archivos (lo que se imprime por stdout entra al contexto).
-// - source "compact" (o sin source): docs/STATE.md, más la feature activa si la hay.
+// - source "compact" (o sin source): el estado del proyecto (docs/STATE.md, o el que diga .claude/dev-flow.json), más la feature activa si la hay.
+// - En una rama de ticket (feat/<N>-..., fix/<N>-...): recuerda el número de issue y cómo releerlo.
 // - source "startup"/"resume": solo la feature activa (docs/features/<slug>/STATE.md y HANDOFF.md).
 // Feature activa = la carpeta docs/features/<slug> cuyo slug coincide con el nombre del worktree/carpeta o de la rama.
 // Si no hay nada que inyectar, no imprime nada.
@@ -9,6 +10,7 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 const os = require('os');
 const lib = require('./lib.cjs');
+const config = require('../lib/config.cjs');
 if (lib.off('rehydrate')) process.exit(0);
 
 // Mantiene al día la statusline instalada por /dev-flow:setup (la copia vive fuera del plugin porque la ruta
@@ -18,6 +20,14 @@ try {
   const dst = path.join(process.env.AI_ENV_HOME || os.homedir(), '.claude', 'ai-env', 'statusline.cjs');
   if (fs.existsSync(dst) && fs.readFileSync(src, 'utf8') !== fs.readFileSync(dst, 'utf8')) fs.copyFileSync(src, dst);
 } catch { /* sin statusline instalada */ }
+// Igual con el hook de worktrees si /dev-flow:setup --worktrees lo instaló.
+try {
+  const wd = path.join(process.env.AI_ENV_HOME || os.homedir(), '.claude', 'ai-env', 'worktree');
+  for (const [rel, from] of [['hooks/worktree.cjs', path.join(__dirname, 'worktree.cjs')], ['lib/config.cjs', path.join(__dirname, '..', 'lib', 'config.cjs')]]) {
+    const dst = path.join(wd, rel);
+    if (fs.existsSync(dst) && fs.readFileSync(from, 'utf8') !== fs.readFileSync(dst, 'utf8')) fs.copyFileSync(from, dst);
+  }
+} catch { /* sin hook de worktrees instalado */ }
 
 let raw = '';
 process.stdin.on('data', (c) => (raw += c));
@@ -36,16 +46,25 @@ process.stdin.on('end', () => {
   const read = (p) => (fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : '');
   const out = [];
 
+  let stateRel = 'docs/STATE.md';
+  try { stateRel = config.load(config.repoRoot(cwd)).state || stateRel; } catch { /* config inválida: valor por defecto */ }
   if (source === 'compact') {
-    const state = read(path.join(cwd, 'docs', 'STATE.md'));
+    const state = read(path.join(cwd, ...stateRel.split('/')));
     if (state) {
       out.push(
-        'La conversación acaba de compactarse. Este es el estado del proyecto (docs/STATE.md). ' +
+        `La conversación acaba de compactarse. Este es el estado del proyecto (${stateRel}). ` +
           'Si algo del resumen automático lo contradice, gana el STATE. ' +
           'Antes de seguir, resumí en 5 líneas lo entendido y pedí confirmación.\n\n' +
           state.slice(0, MAX) + (state.length > MAX ? '\n[STATE truncado: mover lo histórico a docs/STATE-archive.md]' : '')
       );
     }
+  }
+
+  // Rama de ticket: el contexto del worker es el issue, no el PRD completo.
+  {
+    const br = spawnSync('git', ['branch', '--show-current'], { cwd, encoding: 'utf8' });
+    const m = br.status === 0 && br.stdout.trim().match(/^(feat|fix)\/(\d+)-/);
+    if (m) out.push(`Estás en la rama del ticket #${m[2]} (${br.stdout.trim()}). Tu contexto es ese issue: releelo con \`gh issue view ${m[2]}\` si lo perdiste. No leas el PRD completo; si te falta algo, pedilo en el issue.`);
   }
 
   // Feature activa

@@ -1,6 +1,6 @@
 {
   "name": "dev-flow",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "Workflow de desarrollo por features: una sesión por feature con topes, camino corto para arreglos chicos, compuertas de pruebas, arquitectura y seguridad, cierre documentado y presupuesto del límite de 5 h.",
   "author": {
     "name": "ai-env contributors",

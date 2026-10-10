@@ -1,6 +1,6 @@
 {
   "name": "app-review",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Revisión de código de aplicación en tres lentes (identidad, seguridad, costo de APIs), reglas para React y llamadas a APIs, y subagentes reviewer y explorer.",
   "author": {
     "name": "ai-env contributors",
