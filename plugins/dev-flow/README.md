@@ -40,8 +40,8 @@ Todas las skills son manuales. Orden típico: `project-init` → `arch:arch-firs
 
 | Hook | Evento | Qué hace |
 |---|---|---|
-| `session-guard` | Bash, PowerShell | Bloquea que Claude abra sesiones por su cuenta y que corra `approve.cjs`; lanzar con `feature-flow` pide confirmación humana |
-| `rehydrate` | SessionStart | Tras `/compact` reinyecta `docs/STATE.md`; al arrancar en la rama o worktree de una feature inyecta su `HANDOFF.md` y `STATE.md`, **la etapa en la que está y el paso siguiente**, e inicia la medición de consumo. Si hay una arquitectura sin aprobar, lo avisa |
+| `session-guard` | Bash, PowerShell | Bloquea que Claude abra sesiones por su cuenta; lanzar con `feature-flow` pide confirmación humana. Que Claude no corra `approve.cjs` lo controla `arch-guard`, del plugin `arch` |
+| `rehydrate` | SessionStart | Tras `/compact` reinyecta `docs/STATE.md`; al arrancar en la rama o worktree de una feature inyecta su `HANDOFF.md` y `STATE.md`, **la etapa en la que está y el paso siguiente**, e inicia la medición de consumo. El aviso de arquitectura sin aprobar lo da `arch-start`, del plugin `arch` |
 | `stop-verify` | Stop | Si hubo cambios de código, corre `typecheck` y `lint` antes de dar el turno por terminado. Se apaga por repo con `{"stopVerify": false}` en `.claude/dev-flow.json` |
 
 ## Sesiones por feature sin abusar

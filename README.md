@@ -58,8 +58,6 @@ Y una vez por repo: `/dev-flow:project-init`. Con `--settings` deja el marketpla
 
 Cada plugin tiene su propio README con el detalle de skills, hooks, configuración y límites. Los costos son la estimación de `claude plugin details <plugin>@ai-env`; los hooks no consumen contexto. Las skills se invocan con el prefijo del plugin (`/dev-flow:feature-run`).
 
-**Actualizaciones.** Los plugins no declaran `version`: cada commit es una versión. Claude Code trae la actualización automática apagada para marketplaces de terceros; el instalador (o `/dev-flow:setup`) la enciende. A mano: `claude plugin marketplace update ai-env`. Lo que cambia para quien los usa está en [`CHANGELOG.md`](CHANGELOG.md).
-
 ## Cómo se usa, en una página
 
 | Momento | Qué hacer |

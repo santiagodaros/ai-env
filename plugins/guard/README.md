@@ -30,7 +30,6 @@ Variables de entorno del proceso de Claude Code (no de los comandos que corre Cl
 | `AI_ENV_HOOKS=off` | Apaga todos los hooks de ai-env |
 | `AI_ENV_HOOKS_SKIP=bash-guard,stop-verify` | Apaga los hooks nombrados |
 | `AI_ENV_GUARD_STRICT=1` | Lo que pide confirmación pasa a bloquearse |
-
 | `AI_ENV_LOG=off` | No registra las decisiones de los hooks |
 
 ## Registro de uso

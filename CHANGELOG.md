@@ -2,6 +2,10 @@
 
 Cada plugin tiene su versión y cada publicación su tag `<plugin>--v<versión>`. Acá va lo que cambia para quien los usa.
 
+## 2026-10-10 — guard 1.0.1, dev-flow 1.0.1
+
+- Corrige el README: la tabla de interruptores de guard y qué hooks quedaron en arch tras la separación.
+
 ## 2026-10-06 — Versión 1.0.0 de los seis plugins
 
 Primera publicación con versiones: `guard 1.0.0`, `arch 1.0.0`, `dev-flow 1.0.0`, `app-review 1.0.0`, `cloud-ops 1.0.0`, `front-studio 1.0.0`.
