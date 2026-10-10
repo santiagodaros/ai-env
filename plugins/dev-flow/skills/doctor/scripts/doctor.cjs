@@ -76,6 +76,11 @@ else add(cmd.replace(/\\/g, '/').includes('.claude/ai-env/statusline.cjs') ? 'OK
 const snap = json(path.join(process.env.CLAUDE_BUDGET_DIR || path.join(home, '.claude', '.budget'), 'latest.json'));
 if (!snap) add('INFO', 'sin foto de consumo todavía', 'aparece tras la primera respuesta de una sesión interactiva (planes Pro/Max)');
 else { const min = Math.round((Date.now() - snap.at) / 60000); add(snap.fiveHour ? 'OK' : 'INFO', 'foto de consumo', snap.fiveHour ? `5 h al ${snap.fiveHour.pct}% · hace ${min} min` : 'sin rate_limits: el plan no los informa'); }
+if (snap && snap.fiveHour) {
+  const r = spawnSync(process.execPath, [path.join(__dirname, '..', '..', 'budget-plan', 'scripts', 'budget.cjs'), 'burn', '--json'], { encoding: 'utf8', env: process.env, cwd });
+  let b = null; try { b = JSON.parse(r.stdout); } catch { /* sin datos */ }
+  if (b) add(b.ok && b.exhaustsBeforeReset ? 'AVISO' : 'INFO', 'velocidad de consumo (5 h)', b.text);
+}
 
 // Herramientas de infraestructura que usa cloud-ops:iac-verify (la que falta se saltea)
 if (en[Object.keys(en).find((x) => x.startsWith('cloud-ops')) || ''] ) {

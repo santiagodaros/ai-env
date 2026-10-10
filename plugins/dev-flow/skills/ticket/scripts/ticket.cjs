@@ -27,7 +27,7 @@ const L = cfg.labels;
 const git = (a) => spawnSync('git', a, { cwd: root, encoding: 'utf8' });
 const slugify = (t) => t.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/^\[?[a-z]{1,4}-\d{1,4}\]?\s*/, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').split('-').slice(0, 5).join('-') || 'ticket';
 const tmpFile = (name, text) => { const f = path.join(os.tmpdir(), `dev-flow-${process.pid}-${name}`); fs.writeFileSync(f, text); return f; };
-const COLORS = { 'tamaño:S': 'bfdadc', 'tamaño:M': '7fc8cf', 'tamaño:L': '2b7a87', [L.ready]: '0e8a16', [L.doing]: 'fbca04', [L.review]: '1d76db', [L.blocked]: 'b60205', 'tipo:feat': 'c5def5', 'tipo:fix': 'f9d0c4' };
+const COLORS = { 'tamaño:T': 'e6f4f1', 'tamaño:S': 'bfdadc', 'tamaño:M': '7fc8cf', 'tamaño:L': '2b7a87', [L.ready]: '0e8a16', [L.doing]: 'fbca04', [L.review]: '1d76db', [L.blocked]: 'b60205', 'tipo:feat': 'c5def5', 'tipo:fix': 'f9d0c4' };
 
 function ensureLabels(names) {
   for (const n of names) gh(['label', 'create', n, '--force', '--color', COLORS[n] || (n.startsWith('prd:') ? 'ededed' : 'cccccc')], { allowFail: true });

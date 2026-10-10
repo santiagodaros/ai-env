@@ -83,7 +83,7 @@ Instalás los seis una vez y cada repo activa solo los de su dominio. Así hay m
 | Programa, página o automatización nueva | `/arch:arch-first`: no se escribe código hasta que apruebes la arquitectura |
 | Feature | `/dev-flow:feature-run`. Al abrir una sesión en su rama, Claude ya sabe la etapa y el paso siguiente |
 | Trabajar como orquestador (Tech Lead + workers) | Una vez: `/dev-flow:init` en modo Tech Lead y `/dev-flow:setup --worktrees`. Después, `/dev-flow:dispatch`: PRD → tickets → workers → auditoría |
-| Arreglo puntual | `/dev-flow:quick-fix` |
+| Arreglo puntual | `/dev-flow:quick-fix`: una sola parada humana (tu sí al diff final). Si el cambio toca autenticación, sesión, permisos, CORS, secretos, dependencias o infraestructura, aunque sea una línea, el script lo saca del carril y manda al flujo con auditoría |
 | Cambio de infraestructura | Pedilo normalmente: `iac-change-review` resume el plan antes de aplicar e `iac-verify` valida al terminar |
 | UI existente para criticar o rediseñar | `/front-studio:ui-options`: puntajes, plan de trabajo con issues y tres direcciones más la estándar |
 | Ver los cambios de UI en vivo | `/front-studio:preview-setup`: `.claude/launch.json` para el panel de preview de la app, o capturas antes/después en la terminal |

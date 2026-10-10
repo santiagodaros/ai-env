@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // El Tech Lead lanza workers efímeros: un rol, un ticket, contexto en frío, worktree propio y salida estructurada.
 // Uso:
-//   node dispatch.cjs run --issue <N> --role implementer|sre|docs [--size S|M|L] [--mode headless|bg] [--launch]
+//   node dispatch.cjs run --issue <N> --role implementer|sre|docs [--size T|S|M|L] [--mode headless|bg] [--launch]
 //   node dispatch.cjs run --issues 12,13 --role implementer [--launch]     (lote paralelo: solo tickets independientes)
 //   node dispatch.cjs run --pr <P> --role auditor [--issue <N>] [--launch]
 //   node dispatch.cjs resume --run <id> [--max-turns N] [--launch]          (retoma la misma sesión desde progress.md)
@@ -79,8 +79,8 @@ function sectionOf(body, re) {
 function scopeOf(issue) {
   const files = [...sectionOf(issue.body, /^##\s+Alcance/i).matchAll(/^\s*-\s+`?([^`\s(][^`\s]*)`?/gm)].map((m) => m[1].replace(/\\/g, '/'));
   const deps = [...sectionOf(issue.body, /^##\s+Dependencias/i).matchAll(/#(\d+)/g)].map((m) => Number(m[1]));
-  const lab = (issue.labels || []).map((l) => l.name).find((x) => /^tama(ñ|n)o:[SML]$/.test(x));
-  const size = lab ? lab.slice(-1) : ((sectionOf(issue.body, /^##\s+Tama/i).match(/\b([SML])\b/) || [])[1] || null);
+  const lab = (issue.labels || []).map((l) => l.name).find((x) => /^tama(ñ|n)o:[TSML]$/.test(x));
+  const size = lab ? lab.slice(-1) : ((sectionOf(issue.body, /^##\s+Tama/i).match(/\b([TSML])\b/) || [])[1] || null);
   return { files, deps, size };
 }
 const overlap = (a, b) => a.some((x) => b.some((y) => x === y || x.startsWith(y.replace(/\/?\*+$/, '') + '/') || y.startsWith(x.replace(/\/?\*+$/, '') + '/')));
@@ -205,8 +205,9 @@ function buildLaunch(root, cfg, role, ctx, mode, base) {
   const W = cfg.workers || {};
   const key = `${role}-${role === 'auditor' ? `pr${pr.number}` : issue.number}`;
   const sc = issue ? scopeOf(issue) : { files: [], size: null };
-  const size = (get('--size') || sc.size || 'M').toUpperCase();
-  if (!SIZES[size]) fail('--size es S, M o L.');
+  let size = (ctx.forceSize || get('--size') || sc.size || 'M').toUpperCase();
+  if (size === 'T') size = 'S'; // un trivial que llegó hasta acá no calificó para quick-fix
+  if (!SIZES[size]) fail('--size es T, S, M o L.');
   const sz = { ...SIZES[size], ...((W.sizes || {})[size] || {}) };
   const def = roleDef(role, root);
   const model = get('--model') || (role !== 'auditor' && sz.model) || (W.models || {})[role] || (role === 'auditor' ? def.model : MODELS[role]) || def.model;
@@ -296,6 +297,27 @@ function run() {
       if (scopes[i].deps.includes(scopes[j].n) || scopes[j].deps.includes(scopes[i].n)) fail(`#${scopes[i].n} y #${scopes[j].n} dependen uno del otro: van en serie.`);
     }
   }
+  // Tamaño T (trivial): no se lanza sesión. Si las rutas del alcance califican para quick-fix, va por ahí en esta
+  // sesión; si no, se trata como S y se dice por qué.
+  if (role !== 'auditor') {
+    const QF = path.join(__dirname, '..', '..', 'quick-fix', 'scripts', 'quick.cjs');
+    const keep = [];
+    for (const c of ctxs) {
+      const sc = scopeOf(c.issue);
+      if ((get('--size') || sc.size || '').toUpperCase() !== 'T') { keep.push(c); continue; }
+      if (!sc.files.length) { console.log(`#${c.issue.number} es trivial pero no declara su alcance (## Alcance): se trata como S.`); c.forceSize = 'S'; keep.push(c); continue; }
+      const q = spawnSync(process.execPath, [QF, '--plan', sc.files.join(','), '--json'], { cwd: root, encoding: 'utf8' });
+      let j = {}; try { j = JSON.parse(q.stdout); } catch { /* salida rara */ }
+      if (q.status === 0 && j.ok) {
+        console.log(`#${c.issue.number} es trivial y sus rutas califican para quick-fix: no lanzo sesión.\n  Seguí en esta sesión: /dev-flow:quick-fix (#${c.issue.number}: ${c.issue.title}). Para contexto limpio, delegalo a un subagente dev-flow:implementer en esta misma sesión.\n  El contenido del diff se evalúa al final con quick.cjs; si no califica, vuelve al flujo con auditor.`);
+        continue;
+      }
+      console.log(`#${c.issue.number} figura como trivial pero NO califica para quick-fix (${(j.why || ['sin detalle']).join('; ')}): se trata como S, con worker y auditor.`);
+      c.forceSize = 'S'; keep.push(c);
+    }
+    if (!keep.length) return;
+    ctxs = keep;
+  }
   const pc = preCheck(root);
   const claude = claudeCmd();
   const launches = ctxs.map((c) => buildLaunch(root, cfg, role, c, mode, base));
@@ -307,8 +329,15 @@ function run() {
     const reg = guard.readReg(root);
     for (const L of launches.slice(1)) if (reg.some((r) => (r.key || r.slug) === L.key && Date.now() - r.at < 86400000)) fail(`"${L.key}" ya se lanzó en las últimas 24 h.`);
   }
-  const b = guard.budget(root, launches[0].key);
-  if (!b.ok) fail(b.text);
+  // Presupuesto del LOTE completo (antes se miraba solo el primer worker): entran k de n; el resto queda en cola.
+  const b = budgetBatch(root, role, launches, c0.info.running.total);
+  if (b.launchable === 0) fail(b.text);
+  if (b.launchable < launches.length) {
+    const queued = launches.slice(b.launchable).map((L) => L.ticketN).filter(Boolean);
+    launches.splice(b.launchable);
+    if (has('--launch') && queued.length) queueInPlan(root, queued);
+    console.log(`${b.text}\nSe ${has('--launch') ? 'lanzan' : 'lanzarían'} ${launches.length}; quedan en cola: ${queued.map((n) => `#${n}`).join(', ')} (dispatch plan show). Lanzalos cuando terminen los que corren o después del reinicio.`);
+  }
   for (const L of launches) {
     const c = ctxs[launches.indexOf(L)];
     console.log(`Worker: ${role} ${role === 'auditor' ? `PR #${c.pr.number}` : `#${c.issue.number}`} (${mode}, tamaño ${L.size}, modelo ${L.model || 'por defecto'}, ${L.maxTurns} turnos${L.effort ? `, esfuerzo ${L.effort}` : ''})`);
@@ -385,6 +414,41 @@ function runs(root) {
 }
 
 // Métricas por corrida terminada (sin contenido): costo, turnos, duración, modelo, permisos denegados, resultado.
+// Foto del límite de 5 h (la escribe la statusline) y estimación por worker para el presupuesto del lote.
+const budgetSnap = () => readJson(path.join(process.env.CLAUDE_BUDGET_DIR || path.join(require('os').homedir(), '.claude', '.budget'), 'latest.json'));
+const metricsOf = (root) => read(path.join(root, '.dev-flow', 'metrics.jsonl')).split('\n').map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+const median = (a) => { const v = [...a].sort((x, y) => x - y); return v.length ? v[Math.floor(v.length / 2)] : null; };
+function budgetBatch(root, role, launches, running) {
+  const M = metricsOf(root).filter((m) => m.role === role && m.durationMs > 0);
+  const minutes = median(M.slice(-20).map((m) => m.durationMs / 60000)) || 15;
+  const solo = M.filter((m) => typeof m.deltaPct === 'number' && m.solo).map((m) => m.deltaPct).sort((x, y) => x - y);
+  const per = solo.length >= 3 ? solo[Math.min(solo.length - 1, Math.ceil(0.75 * solo.length) - 1)] : null;
+  const bp = path.join(__dirname, '..', '..', 'budget-plan', 'scripts', 'budget.cjs');
+  const args = [bp, 'batch', String(launches.length), '--minutes', String(Math.round(minutes)), '--running', String(running), '--json', ...(per !== null ? ['--per-worker', String(per)] : [])];
+  const r = spawnSync(process.execPath, args, { cwd: root, encoding: 'utf8' });
+  try { const j = JSON.parse(r.stdout); return { launchable: Number.isInteger(j.launchable) ? j.launchable : launches.length, text: j.text }; }
+  catch { return { launchable: launches.length, text: 'Presupuesto: sin datos.' }; }
+}
+function queueInPlan(root, issues) {
+  const f = path.join(root, '.dev-flow', 'plan.json');
+  const p = readJson(f) || { goal: '', waves: [] };
+  p.queued = [...new Set([...(p.queued || []), ...issues])];
+  p.updated = new Date().toISOString();
+  fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, JSON.stringify(p, null, 2) + '\n');
+}
+// % del límite de 5 h que consumió una corrida: muestra más cercana al inicio y al fin (±3 min, misma ventana).
+// `solo` = no se superpuso con otra corrida: solo esas sirven para estimar por worker.
+function deltaPctOf(root, r) {
+  const snap = budgetSnap();
+  const S = (snap && snap.samples) || [];
+  if (!r.durationMs || !S.length) return {};
+  const near = (t) => S.reduce((best, x) => (Math.abs(x.at - t) < Math.abs((best || { at: Infinity }).at - t) ? x : best), null);
+  const a = near(r.at), z = near(r.at + r.durationMs);
+  if (!a || !z || Math.abs(a.at - r.at) > 180000 || Math.abs(z.at - (r.at + r.durationMs)) > 180000 || a.resetsAt !== z.resetsAt || z.pct < a.pct) return {};
+  const others = runs(root).filter((o) => o.id !== r.id && o.at < r.at + r.durationMs && (o.at + (o.durationMs || 0)) > r.at);
+  return { deltaPct: Math.round((z.pct - a.pct) * 10) / 10, solo: others.length === 0 };
+}
+
 function recordMetrics(root, r) {
   if (r.state === 'corriendo') return;
   const f = path.join(root, '.dev-flow', 'metrics.jsonl');
@@ -392,7 +456,7 @@ function recordMetrics(root, r) {
   const denials = ((r.out && r.out.permission_denials) || []).map((x) => `${x.tool_name}${x.tool_input && x.tool_input.command ? `(${String(x.tool_input.command).trim().split(/\s+/)[0]})` : ''}`);
   const res = r.result || {};
   const m = { run: r.id, at: new Date(r.at).toISOString(), role: r.role, issue: r.issue, pr: r.pr, size: r.size, model: r.model, state: r.state, cost: r.cost ?? null, turns: r.turns ?? null, durationMs: r.durationMs ?? null, denials, valid: !!r.result && !card.validate(r.result, r.role === 'auditor').length,
-    verdict: res.verdict || null, findings: (res.findings || []).map((x) => `${x.severity}:${x.area}`), testsHonest: res.tests_honest || (res.tests ? res.tests.fail_without_change : null), testsPassed: res.tests ? res.tests.passed : null, parent: r.parent || null };
+    verdict: res.verdict || null, findings: (res.findings || []).map((x) => `${x.severity}:${x.area}`), testsHonest: res.tests_honest || (res.tests ? res.tests.fail_without_change : null), testsPassed: res.tests ? res.tests.passed : null, parent: r.parent || null, ...deltaPctOf(root, r) };
   fs.mkdirSync(path.dirname(f), { recursive: true });
   fs.appendFileSync(f, JSON.stringify(m) + '\n');
 }
@@ -504,7 +568,8 @@ function planSummary(root, p) {
     if (v) return 'tarjeta recogida';
     return mine.length ? mine[0].state : 'sin lanzar';
   };
-  return [`Plan${p.goal ? `: ${p.goal}` : ''} (actualizado ${String(p.updated).slice(0, 16).replace('T', ' ')})`, ...p.waves.map((w, i) => `  ola ${i + 1}: ${w.map((n) => `#${n} ${st(n)}`).join(' · ')}`)].join('\n') + '\n';
+  const q = (p.queued || []).filter((n) => st(n) === 'sin lanzar');
+  return [`Plan${p.goal ? `: ${p.goal}` : ''} (actualizado ${String(p.updated).slice(0, 16).replace('T', ' ')})`, ...p.waves.map((w, i) => `  ola ${i + 1}: ${w.map((n) => `#${n} ${st(n)}`).join(' · ')}`), ...(q.length ? [`  en cola por presupuesto: ${q.map((n) => `#${n}`).join(', ')}`] : [])].join('\n') + '\n';
 }
 
 // Memoria por rol: lecciones cortas, aprobadas por una persona o el Tech Lead, que se suman al system prompt del rol.

@@ -2,6 +2,10 @@
 
 Cada plugin tiene su versión y cada publicación su tag `<plugin>--v<versión>`. Acá va lo que cambia para quien los usa.
 
+## 2026-10-10 — dev-flow 2.2.0
+
+- quick-fix blindado: el piso del carril mira el contenido del diff (líneas agregadas y eliminadas: auth, sesión, CORS, TLS, roles, secretos, CSRF, ejecución dinámica) y los hallazgos medios de secscan, además de la ruta (por palabras, sin falsos positivos como author.ts); --plan antes de editar; una sola parada humana. Tamaño T en tickets sin lanzar sesión. Burn-rate (% por minuto) desde la statusline y presupuesto del lote completo en dispatch, con cola en el plan
+
 ## 2026-10-10 — dev-flow 2.1.0
 
 - Perfiles de plugins por repo (core, app, cloud, frontend, full) desde shared/profiles.json: /dev-flow:init sugiere el perfil según el stack y activa solo esos plugins en .claude/settings.json o, si el repo no se comparte, en .claude/settings.local.json; doctor muestra el perfil activo. Un solo archivo de estado, docs/STATE.md, para los dos modos (docs/ESTADO.md sigue funcionando). spec-interview escribe en docs/features/<slug>/ y encadena con feature-close y pr-prep sin pasar por feature-run

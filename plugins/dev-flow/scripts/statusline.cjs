@@ -24,7 +24,14 @@ process.stdin.on('end', () => {
     try {
       const dir = process.env.CLAUDE_BUDGET_DIR || path.join(os.homedir(), '.claude', '.budget');
       fs.mkdirSync(dir, { recursive: true });
-      const snap = { at: Date.now(), sessionId: d.session_id || null, model: (d.model && d.model.display_name) || null, fiveHour: h5, sevenDay: d7, costUsd: cost };
+      const now = Date.now();
+      // Muestras del límite de 5 h para medir la velocidad de consumo (burn-rate): como mucho una por minuto,
+      // las últimas 60, y solo de la ventana actual (si resets_at cambió, la ventana se reinició).
+      let prev = []; try { prev = JSON.parse(fs.readFileSync(path.join(dir, 'latest.json'), 'utf8')).samples || []; } catch { /* primera vez */ }
+      let samples = Array.isArray(prev) ? prev.filter((x) => x && typeof x.pct === 'number' && typeof x.at === 'number' && now - x.at < 5 * 3600000 && (!h5 || !h5.resetsAt || !x.resetsAt || x.resetsAt === h5.resetsAt)) : [];
+      if (h5 && (!samples.length || now - samples[samples.length - 1].at >= 60000)) samples.push({ at: now, pct: h5.pct, resetsAt: h5.resetsAt || null });
+      samples = samples.slice(-60);
+      const snap = { at: now, sessionId: d.session_id || null, model: (d.model && d.model.display_name) || null, fiveHour: h5, sevenDay: d7, costUsd: cost, samples };
       const tmp = path.join(dir, `latest.${process.pid}.tmp`);
       fs.writeFileSync(tmp, JSON.stringify(snap));
       fs.renameSync(tmp, path.join(dir, 'latest.json'));

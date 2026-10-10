@@ -771,11 +771,16 @@ fs.rmSync(emptyProj, { recursive: true, force: true });
   const fake = path.join(bin, 'fake-tool.js');
   fs.writeFileSync(fake, `const a=process.argv.slice(2);const tool=a.shift();const e=process.env;
 if(tool==='terraform'){ if(a.includes('version')) process.exit(0); if(a.includes('fmt')){ if(e.FAKE_TF_FMT==='1'){console.log('main.tf');process.exit(3);} process.exit(0);} if(a.includes('validate')){ if(e.FAKE_TF_VALIDATE==='1'){console.error('Error: Unsupported argument');process.exit(1);} process.exit(0);} }
-if(tool==='bicep'){ if(a.includes('--version')) process.exit(0); if(e.FAKE_BICEP==='1'){console.error('main.bicep(3,5) : Error BCP057: The name "x" does not exist');process.exit(1);} process.exit(0); }
+// La ruta tiene que llegar entera (con espacios) a la herramienta: si llega partida, falla como en Windows real.
+const exists=(f)=>{ if(!f||!require('fs').existsSync(f)){ console.error('no existe el archivo: '+f); process.exit(9);} };
+if(tool==='bicep'){ if(a.includes('--version')) process.exit(0); exists(a[a.indexOf('build')+1]); if(e.FAKE_BICEP==='1'){console.error('main.bicep(3,5) : Error BCP057: The name "x" does not exist');process.exit(1);} process.exit(0); }
+if(tool==='az'){ if(a[0]==='bicep'&&a[1]==='version') process.exit(0); if(a[0]==='bicep'&&a[1]==='build'){ exists(a[a.indexOf('--file')+1]); if(e.FAKE_BICEP==='1'){console.error('WARNING: A new Bicep release is available\\nmain.bicep(3,5) : Error BCP057: The name "x" does not exist');process.exit(1);} console.error('WARNING: A new Bicep release is available: v0.99.0'); process.exit(0);} process.exit(1); }
 process.exit(0);`);
-  for (const t of ['terraform', 'bicep']) {
-    fs.writeFileSync(path.join(bin, t), `#!/bin/sh\nexec "${process.execPath}" "${fake}" ${t} "$@"\n`, { mode: 0o755 });
-    fs.writeFileSync(path.join(bin, `${t}.cmd`), `@"${process.execPath}" "${fake}" ${t} %*\r\n`);
+  // bin: terraform y bicep sueltos. binAz: solo az (Windows real: az es un .cmd y bicep viene adentro de az).
+  const binAz = path.join(base, 'bin az'); fs.mkdirSync(binAz);
+  for (const [dir, t] of [[bin, 'terraform'], [bin, 'bicep'], [binAz, 'az']]) {
+    fs.writeFileSync(path.join(dir, t), `#!/bin/sh\nexec "${process.execPath}" "${fake}" ${t} "$@"\n`, { mode: 0o755 });
+    fs.writeFileSync(path.join(dir, `${t}.cmd`), `@"${process.execPath}" "${fake}" ${t} %*\r\n`);
   }
   const sh = (cwd, a) => spawnSync('git', a, { cwd, encoding: 'utf8', shell: false });
   const mk = (name, files) => {
@@ -803,6 +808,13 @@ process.exit(0);`);
     check('iac-verify: Bicep que compila pasa', V(bcRepo).code === 0);
     r = V(bcRepo, { FAKE_BICEP: '1' });
     check('iac-verify: error de compilación de Bicep bloquea', r.code === 2 && /BCP057/.test(r.out), `exit=${r.code}`);
+    // Sin bicep suelto se usa `az bicep build` (en Windows, az.cmd por shell), con la ruta entre comillas.
+    const azRepo = mk('az repo', { 'infra con espacios/main.bicep': 'param x string\n' });
+    const VA = (env = {}) => runNode(iv, JSON.stringify({ cwd: azRepo }), { CLAUDE_PROJECT_DIR: azRepo, PATH: binAz + path.delimiter + process.env.PATH.split(path.delimiter).filter((p) => !fs.existsSync(path.join(p, 'bicep')) && !fs.existsSync(path.join(p, 'bicep.exe'))).join(path.delimiter), ...env });
+    r = VA();
+    check('iac-verify: con solo az, una ruta con espacios llega entera y los WARNING de az no bloquean', r.code === 0, `exit=${r.code} ${r.out.slice(0, 200)}`);
+    r = VA({ FAKE_BICEP: '1' });
+    check('iac-verify: con solo az, el error de compilación bloquea y se informa (decide por código de salida, no por el formato)', r.code === 2 && /BCP057/.test(r.out) && /infra con espacios/.test(r.out), `exit=${r.code}`);
     check('iac-verify: sin cambios de infraestructura no hace nada', V(mk('otro', { 'notas.md': 'hola' }), { FAKE_TF_FMT: '1', FAKE_BICEP: '1' }).code === 0);
     const psShell = ['pwsh', 'powershell'].find((c) => { const x = spawnSync(c, ['-NoProfile', '-NonInteractive', '-Command', 'exit 0'], { encoding: 'utf8' }); return !x.error && x.status === 0; });
     if (psShell) {
@@ -879,7 +891,7 @@ process.exit(0);`);
     check('quick-fix: la configuración no puede superar el techo (5 archivos, 120 líneas)', r.code === 3 && qj.limits && qj.limits.maxFiles === 5 && qj.limits.maxLines === 120);
     const sec = mk('secreto'); w(sec, 'src/util.js', 'exports.k = "AK" + "IA";\nconst password = "' + ['hunter2', 'hunter2'].join('') + '";\n'); w(sec, 'tests/u.test.js', '1;\n'); sh(sec, ['add', '-A']);
     r = Q(sec);
-    check('quick-fix: una credencial literal en el arreglo no pasa la compuerta de seguridad', r.code === 3 && /FALLA seguridad/.test(r.out), `exit=${r.code}`);
+    check('quick-fix: una credencial literal en el arreglo saca del carril rápido (secretos en el contenido)', r.code === 3 && /NO es un cambio chico/.test(r.out) && /secretos o credenciales/.test(r.out), `exit=${r.code}`);
   } else add('FALLA', 'quick.cjs existe', qk);
 
   // La compuerta de pruebas no exige pruebas unitarias a infraestructura declarativa
@@ -977,6 +989,9 @@ process.exit(0);`);
   const names = fs.readdirSync(P).filter((d) => fs.existsSync(path.join(P, d, '.claude-plugin', 'plugin.json')));
   check('instalador: ambos conocen todos los plugins que existen', names.every((n) => sh.includes(n) && ps.toString().includes(n)));
 }
+
+// --- quick-fix blindado (reglas de ruta y contenido) y burn-rate
+require('./quick-risk.cjs')({ check, add });
 
 // --- Perfiles de plugins (shared/profiles.json, instaladores)
 require('./profiles.cjs')({ check, add });

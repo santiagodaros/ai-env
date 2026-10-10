@@ -223,6 +223,34 @@ console.log(JSON.stringify({type:'result',subtype:'success',is_error:false,total
   const SG = H('session-guard.cjs');
   check('session-guard: dispatch con --issues 12,13 --launch pide confirmación (una sola)', /"permissionDecision":"ask"/.test(hook(SG, { tool_name: 'Bash', tool_input: { command: `node "${DS}" run --issues 12,13 --role implementer --launch` } }).out));
 
+  // Tamaño T: no se lanza sesión si las rutas califican para quick-fix; si no, se trata como S.
+  fs.appendFileSync(path.join(r4, 'docs', 'PRD.md'), '\n## [F-04] Texto de ayuda\nArchivos: src/fmt.js\nTamaño: T\n\n- [ ] el texto dice "formato"\n\n## [F-05] Login\nArchivos: src/auth/login.js\nTamaño: T\n\n- [ ] algo\n\n## [F-06] Uno\nArchivos: src/uno.js\nTamaño: S\n\n- [ ] uno\n\n## [F-07] Dos\nArchivos: src/dos.js\nTamaño: S\n\n- [ ] dos\n');
+  commit(r4, 'prd trivial');
+  check('prd: acepta Tamaño: T (trivial)', json(run(P, ['slice', 'F-04', '--json'], { cwd: r4 })).size === 'T');
+  for (const id of ['F-04', 'F-05', 'F-06', 'F-07']) run(T, ['create', id], { cwd: r4, env: env4 });
+  const byPrd = (id) => ghs().issues.find((i) => i.labels.includes(`prd:${id}`)).number;
+  check('ticket: el tamaño T lleva su etiqueta', ghs().issues.find((i) => i.labels.includes('prd:F-04')).labels.includes('tamaño:T'));
+  const runsBefore = fs.existsSync(path.join(r4, '.dev-flow', 'runs')) ? fs.readdirSync(path.join(r4, '.dev-flow', 'runs')).length : 0;
+  r = run(DS, ['run', '--issue', String(byPrd('F-04')), '--role', 'implementer', '--launch'], { cwd: r4, env: env4 });
+  check('dispatch: un ticket T cuyas rutas califican no lanza sesión y manda a quick-fix', r.code === 0 && /no lanzo sesión/.test(r.out) && /\/dev-flow:quick-fix/.test(r.out) && fs.readdirSync(path.join(r4, '.dev-flow', 'runs')).length === runsBefore, r.out.slice(0, 300));
+  fs.rmSync(path.join(r4, '.claude', '.feature-flow', 'launches.json'), { force: true }); // sin la espera mínima entre lanzamientos de las pruebas anteriores
+  r = run(DS, ['run', '--issue', String(byPrd('F-05')), '--role', 'implementer'], { cwd: r4, env: env4 });
+  check('dispatch: un ticket T que toca identidad no califica y se trata como S (worker y auditor)', r.code === 0 && /NO califica para quick-fix/.test(r.out) && /tamaño S/.test(r.out), r.out.slice(0, 300));
+
+  // Presupuesto del lote completo (no solo del primer worker).
+  const bdir = env4.CLAUDE_BUDGET_DIR || path.join(tmp, 'budget');
+  const envB = { ...env4, CLAUDE_BUDGET_DIR: bdir };
+  fs.mkdirSync(bdir, { recursive: true });
+  const reset = Math.floor(Date.now() / 1000) + 3600;
+  fs.writeFileSync(path.join(bdir, 'latest.json'), JSON.stringify({ at: Date.now(), fiveHour: { pct: 60, resetsAt: reset } }));
+  for (let i = 0; i < 3; i++) fs.appendFileSync(path.join(r4, '.dev-flow', 'metrics.jsonl'), JSON.stringify({ run: `solo-${i}`, role: 'implementer', durationMs: 600000, deltaPct: 20, solo: true }) + '\n');
+  r = run(DS, ['run', '--issues', `${byPrd('F-06')},${byPrd('F-07')}`, '--role', 'implementer'], { cwd: r4, env: envB });
+  check('dispatch: con ~20% por worker y 30% usable, del lote de 2 entra 1 y el otro queda en cola', r.code === 0 && /Entran 1 de 2/.test(r.out) && /quedan en cola: #\d+/.test(r.out) && (r.out.match(/^Worker: /gm) || []).length === 1, r.out.slice(0, 400));
+  fs.writeFileSync(path.join(bdir, 'latest.json'), JSON.stringify({ at: Date.now(), fiveHour: { pct: 95, resetsAt: reset } }));
+  r = run(DS, ['run', '--issue', String(byPrd('F-06')), '--role', 'implementer'], { cwd: r4, env: envB });
+  check('dispatch: sin margen sobre la reserva no lanza y dice por qué', r.code === 1 && /SIN MARGEN/.test(r.out));
+  fs.rmSync(path.join(bdir, 'latest.json'), { force: true });
+
   fs.rmSync(tmp, { recursive: true, force: true });
   void add;
 };

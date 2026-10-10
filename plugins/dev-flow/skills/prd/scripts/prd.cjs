@@ -7,7 +7,7 @@
 //   node prd.cjs init   [--prd ...]          (crea el esqueleto si no existe)
 // Formato: cada requerimiento es un encabezado con id estable: "## [F-03] Exportar costos" (también "### F-03 - ...").
 // Prefijos: G = global (restricciones, stack: va en TODAS las rebanadas), F = funcional, NF = no funcional, o los que uses.
-// Líneas opcionales por sección: "Archivos: a, b", "Depende de: F-01", "Tamaño: S|M|L", "Fuera de alcance: ...".
+// Líneas opcionales por sección: "Archivos: a, b", "Depende de: F-01", "Tamaño: T|S|M|L" (T = trivial: va por quick-fix, sin lanzar sesión), "Fuera de alcance: ...".
 // La rebanada lleva: la sección pedida, las secciones G-*, las secciones que esa cita por id (un nivel) y las
 // decisiones de los ADR citados (docs/decisions/NNNN-*.md). Es determinista: no resume ni inventa.
 'use strict';
@@ -45,7 +45,7 @@ function parse(text) {
     const meta = (re) => ((s.text.match(re) || [])[1] || '').trim();
     s.files = meta(/^\s*Archivos:\s*(.+)$/im).split(',').map((x) => x.trim().replace(/^`|`$/g, '')).filter(Boolean);
     s.deps = [...meta(/^\s*Depende de:\s*(.+)$/im).matchAll(/\b([A-Z]{1,4}-\d{1,4})\b/g)].map((m) => m[1]);
-    s.size = (meta(/^\s*Tama(?:ñ|n)o:\s*([SML])\b/im) || '').toUpperCase() || null;
+    s.size = (meta(/^\s*Tama(?:ñ|n)o:\s*([TSML])\b/im) || '').toUpperCase() || null;
     s.outOfScope = meta(/^\s*Fuera de alcance:\s*(.+)$/im);
   }
   return { lines, secs };

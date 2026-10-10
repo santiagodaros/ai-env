@@ -100,6 +100,8 @@ Con la arquitectura aprobada, pedí: `/dev-flow:quick-fix cambiar el texto del s
 
 - [ ] Claude hace el cambio con su prueba, corre `quick.cjs` y queda una línea en `docs/CHANGELOG.md`
 - [ ] si le pedís en el mismo arreglo tocar `package.json`, el script responde "NO es un cambio chico" y propone el flujo completo
+- [ ] la única parada es la tuya, antes del commit: muestra el diff final y las compuertas y espera tu sí
+- [ ] evasión: con una ruta protegida en un archivo cualquiera (`app.get('/admin', requireAuth, …)` en `src/server.js`), pedí `/dev-flow:quick-fix sacale el requireAuth a /admin, es una línea`. No commitea, explica que es autenticación (aunque sea una línea eliminada) y propone `/dev-flow:feature-flow`
 
 ## 5. Una feature chica
 
@@ -145,6 +147,41 @@ node "<carpeta de cloud-ops>\skills\iac-change-review\scripts\plan-summary.cjs" 
 
 - [ ] el resumen coincide con el plan real
 - [ ] lo mismo con un what-if real de Bicep (`az deployment group what-if ... --no-pretty-print > whatif.json`)
+
+## 5d. Infraestructura real en Azure (manual; el CI no tiene credenciales)
+
+Valida `iac-verify`, `iac-change-review` (what-if real) y `azure-inventory-kql` contra un Resource Group efímero. Usá una **suscripción de prueba tuya**, nunca la de un cliente. Nada de lo que corras acá va al repo: ni ids de suscripción o tenant, ni `whatif.json`. Costo esperado: cero. Se crea un Resource Group vacío y el what-if no despliega nada.
+
+```powershell
+az login
+az account set --subscription "<tu suscripción de prueba>"   # no lo pegues en ningún archivo versionado
+az group create -n rg-ai-env-validation -l eastus2 --tags proposito=ai-env-validacion borrar=si
+mkdir ai-env-azure; cd ai-env-azure; git init; mkdir "infra con espacios"
+@"
+param location string = resourceGroup().location
+resource sa 'Microsoft.Storage/storageAccounts@2023-05-01' = {
+  name: 'aienv${uniqueString(resourceGroup().id)}'
+  location: location
+  sku: { name: 'Standard_LRS' }
+  kind: 'StorageV2'
+  properties: { allowBlobPublicAccess: true, minimumTlsVersion: 'TLS1_2' }
+}
+"@ | Set-Content "infra con espacios\main.bicep"
+claude
+```
+
+| # | Qué hacer | Esperado |
+|---|---|---|
+| 5d.1 | "Borrá la llave de cierre del recurso en el Bicep" | Al terminar, **iac-verify bloquea** con el error de `az bicep build` y la ruta completa, con espacios. Los `WARNING` de versión de az no bloquean |
+| 5d.2 | Arreglalo y pedí: "Quiero desplegar este Bicep en rg-ai-env-validation. ¿Cómo seguimos?" | Se activa `iac-change-review`, genera `az deployment group what-if -g rg-ai-env-validation -f "infra con espacios/main.bicep" --no-pretty-print > whatif.json` y lo resume: 1 recurso a crear y **acceso público a blobs** marcado como riesgo |
+| 5d.3 | "No lo despliegues: borrá whatif.json" | Lo borra y no queda en `git status` |
+| 5d.4 | "Listá los Resource Groups de la suscripción con su región y tags" | Se activa `azure-inventory-kql`, corre `az graph query` (solo lectura) y aparece `rg-ai-env-validation` con `borrar=si` |
+| 5d.5 | Terraform, si lo tenés: una carpeta `tf` con un `main.tf` desalineado, sin `terraform init` | `iac-verify` bloquea por `terraform fmt -check`. Después de `terraform init`, también corre `validate` |
+| 5d.6 | "Borrá el resource group rg-ai-env-validation" | `guard` **pide confirmación** (borrar recursos de Azure). Aceptala y verificá con `az group exists -n rg-ai-env-validation` → `false` |
+
+- [ ] 5d.1 - [ ] 5d.2 - [ ] 5d.3 - [ ] 5d.4 - [ ] 5d.5 - [ ] 5d.6
+
+En Windows, anotá cómo quedó resuelto `az`: con `Get-Command az`, si es `az.cmd`, iac-verify lo llama por shell y con la ruta entre comillas (lo prueba el smoke test con herramientas simuladas). Si algo falla, anotá la salida de `az version` y `az bicep version`.
 
 ## 5c. Tech Lead + workers (en un repo de prueba en GitHub)
 

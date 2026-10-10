@@ -3,6 +3,9 @@
 // Lee la foto que escribe la statusline (~/.claude/.budget/latest.json). Sin rate_limits (planes sin límite en la
 // statusline) los comandos lo dicen y no inventan datos.
 // Uso: node budget.cjs status | start <slug> | end <slug> | estimate [slug] | plan [slug] | check [slug]  [--json]
+//      node budget.cjs burn [--json]                       velocidad de consumo (% del límite de 5 h por minuto)
+//      node budget.cjs batch <n> --minutes <m> [--running <k>] [--per-worker <pct>] [--json]
+//                                                           cuántos de n workers entran (lo usa dispatch); exit 4 = ninguno
 const fs = require('fs'), os = require('os'), path = require('path'), { spawnSync } = require('child_process');
 const argv = process.argv.slice(2);
 const cmd = argv[0], slug = argv[1] && !argv[1].startsWith('--') ? argv[1] : undefined, asJson = argv.includes('--json');
@@ -32,6 +35,24 @@ function snapshot() {
     weekPct: s.sevenDay ? s.sevenDay.pct : null, ageMin, stale: ageMin > cfg.staleMinutes, sessionId: s.sessionId, costUsd: s.costUsd,
   };
 }
+// Velocidad de consumo con las muestras que guarda la statusline (una por minuto, ventana actual). La statusline
+// entrega porcentaje del límite, no tokens: la unidad es % por minuto. Incluye todo lo que gasta la cuenta.
+function burn(s) {
+  const raw = readJson(path.join(budgetDir, 'latest.json'), null);
+  if (!s) return { ok: false, reason: 'sin datos del límite de 5 h' };
+  const now = Date.now();
+  const all = ((raw && raw.samples) || []).filter((x) => x && typeof x.pct === 'number' && (!s.resetsAt || !x.resetsAt || x.resetsAt === s.resetsAt));
+  const win = all.filter((x) => now - x.at <= 30 * 60000);
+  const span = win.length ? (win[win.length - 1].at - win[0].at) / 60000 : 0;
+  if (win.length < 3 || span < 10) return { ok: false, reason: `pocas muestras (${win.length} en ${Math.round(span)} min; hacen falta 3 en 10 min o más)` };
+  const rate = Math.max(0, (win[win.length - 1].pct - win[0].pct) / span);
+  const usable = Math.max(0, 100 - cfg.reservePct - s.usedPct);
+  const toReserve = rate > 0 ? usable / rate : Infinity;
+  const toReset = s.resetsAt ? Math.max(0, (s.resetsAt * 1000 - now) / 60000) : null;
+  return { ok: true, ratePctPerMin: Math.round(rate * 100) / 100, samples: win.length, spanMin: Math.round(span), minutesToReserve: isFinite(toReserve) ? Math.round(toReserve) : null, minutesToReset: toReset === null ? null : Math.round(toReset), exhaustsBeforeReset: isFinite(toReserve) && toReset !== null && toReserve < toReset };
+}
+const burnText = (b) => (b.ok ? `Consumo: ${b.ratePctPerMin}%/min en los últimos ${b.spanMin} min.${b.minutesToReserve === null ? ' Sin consumo en ese lapso.' : ` Al ritmo actual llegás a la reserva en ~${b.minutesToReserve} min${b.minutesToReset !== null ? (b.exhaustsBeforeReset ? `, ANTES del reinicio (en ${b.minutesToReset} min)` : `, después del reinicio (en ${b.minutesToReset} min)`) : ''}.`}` : `Consumo: sin medir (${b.reason}).`);
+
 const fmtReset = (sec) => { if (!sec) return 'sin dato de reinicio'; const m = Math.max(0, Math.round((sec * 1000 - Date.now()) / 60000)); return `en ${Math.floor(m / 60)} h ${m % 60} min`; };
 const need = () => { if (!slug) { console.error('Falta el slug de la feature.'); process.exit(1); } };
 
@@ -48,7 +69,8 @@ function estimate() {
 if (cmd === 'status') {
   const s = snapshot();
   if (!s) return out({ ok: false, text: 'Sin datos del límite de 5 h: la statusline no entregó rate_limits (solo Pro/Max, tras la primera respuesta) o no corre la statusline del kit.' });
-  out({ ok: true, ...s, text: `5 h: ${Math.round(s.usedPct)}% usado, ${Math.round(s.freePct)}% libre, reinicia ${fmtReset(s.resetsAt)}.` + (s.weekPct !== null ? ` 7 d: ${Math.round(s.weekPct)}%.` : '') + (s.stale ? ` DATO VIEJO (${Math.round(s.ageMin)} min): abrí una sesión interactiva para refrescarlo.` : '') });
+  const b = burn(s);
+  out({ ok: true, ...s, burn: b, text: `5 h: ${Math.round(s.usedPct)}% usado, ${Math.round(s.freePct)}% libre, reinicia ${fmtReset(s.resetsAt)}. ${burnText(b)}` + (s.weekPct !== null ? ` 7 d: ${Math.round(s.weekPct)}%.` : '') + (s.stale ? ` DATO VIEJO (${Math.round(s.ageMin)} min): abrí una sesión interactiva para refrescarlo.` : '') });
 } else if (cmd === 'start') {
   need();
   const h = hist();
@@ -98,6 +120,31 @@ if (cmd === 'status') {
   }
   out({ status, freePct: A, usablePct: usable, estimatePct: e.pct, text: lines.join('\n') });
   if (cmd === 'check' && ['sin-margen', 'no-alcanza'].includes(status)) process.exit(4);
+} else if (cmd === 'burn') {
+  const s = snapshot(), b = burn(s);
+  out({ ...b, text: s ? burnText(b) : 'Sin datos del límite de 5 h: la statusline no entregó rate_limits (solo Pro/Max, tras la primera respuesta).' });
+} else if (cmd === 'batch') {
+  // Cuántos workers de un lote entran sin pasar la reserva, y si el ritmo actual agota antes de que terminen.
+  const n = Math.max(1, Number(argv[1]) || 1);
+  const opt = (k, d) => { const i = argv.indexOf(k); const v = i >= 0 ? Number(argv[i + 1]) : NaN; return isFinite(v) ? v : d; };
+  const minutes = Math.max(1, opt('--minutes', 15)), running = Math.max(0, opt('--running', 0)), measured = opt('--per-worker', null);
+  const s = snapshot();
+  if (!s) return out({ status: 'sin-datos', launchable: n, text: 'Presupuesto: sin datos del límite de 5 h (solo Pro/Max, tras la primera respuesta): se lanza sin modular.' });
+  const b = burn(s);
+  const usable = Math.max(0, s.freePct - cfg.reservePct);
+  const per = measured !== null ? measured : b.ok && b.ratePctPerMin > 0 ? (b.ratePctPerMin / Math.max(1, running)) * minutes : null;
+  const L = [`Presupuesto: ${Math.round(s.usedPct)}% usado, ${Math.round(usable)}% usable sobre la reserva del ${cfg.reservePct}%. ${burnText(b)}`];
+  let k = n;
+  if (usable <= 0) { k = 0; L.push('SIN MARGEN: no queda nada sobre la reserva. Esperá al reinicio.'); }
+  else if (b.ok && b.exhaustsBeforeReset && b.minutesToReserve !== null && b.minutesToReserve < minutes) { k = 0; L.push(`Con el ritmo actual llegás a la reserva en ~${b.minutesToReserve} min y un worker tarda ~${Math.round(minutes)} min: no agregues carga. Esperá a que terminen los que corren o al reinicio.`); }
+  else if (per !== null && per > 0) {
+    k = Math.min(n, Math.floor(usable / per));
+    L.push(`Cada worker: ~${Math.round(per * 10) / 10}% (${measured !== null ? 'medido en corridas anteriores' : `ritmo actual repartido en ${Math.max(1, running)} corrida(s) × ${Math.round(minutes)} min`}). Entran ${k} de ${n}.`);
+    if (k === 0) L.push(`No entra ninguno sin pasar la reserva: esperá al reinicio${s.resetsAt ? ` (${fmtReset(s.resetsAt)})` : ''} o partí el ticket en rebanadas más chicas.`);
+  } else L.push('Sin estimación por worker todavía: se lanza sin modular.');
+  const status = k === 0 ? 'sin-margen' : k < n ? 'parcial' : 'alcanza';
+  out({ status, launchable: k, requested: n, perWorkerPct: per, burn: b, usablePct: usable, text: L.join(' ') });
+  if (k === 0) process.exit(4);
 } else {
-  console.error('Uso: budget.cjs status | start <slug> | end <slug> | estimate | plan | check  [--json]'); process.exit(1);
+  console.error('Uso: budget.cjs status | start <slug> | end <slug> | estimate | plan | check | burn | batch <n> --minutes <m>  [--json]'); process.exit(1);
 }

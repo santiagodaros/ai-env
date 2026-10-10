@@ -21,7 +21,7 @@ Scripts: `D="${CLAUDE_PLUGIN_ROOT}/skills/dispatch/scripts"` → `node "$D/dispa
 
    | Tamaño | Topología | Worker |
    |---|---|---|
-   | Trivial | `quick-fix` con un subagente `dev-flow:implementer` (sin lanzar sesiones) | — |
+   | T (trivial) | `quick-fix` en esta sesión, o con un subagente `dev-flow:implementer` (sin lanzar sesiones). `dispatch run` lo hace cumplir: con `Tamaño: T` chequea las rutas del alcance con `quick.cjs --plan` y no lanza nada; si no califican, lo trata como S | — |
    | S | 1 implementer | sonnet, 30 turnos, esfuerzo medio |
    | M | 1 implementer + 1 auditor | sonnet, 60 turnos |
    | L | 2-3 **explorers** en paralelo (en esta sesión) → 1 implementer → 1 auditor | opus, 100 turnos, esfuerzo alto |

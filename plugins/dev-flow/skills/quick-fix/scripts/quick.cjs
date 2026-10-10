@@ -3,9 +3,12 @@
 // menor y, si lo es, corre las mismas compuertas que una feature (verificaciones, pruebas, arquitectura, seguridad)
 // y anota una línea en docs/CHANGELOG.md. Si no lo es, lo dice y manda al flujo completo.
 // Uso: node quick.cjs [--log "<qué se arregló>"] [--no-test "<motivo que dio el usuario>"] [--json]
+//      node quick.cjs --plan <archivo>[,<archivo>...] [--json]   chequeo previo de rutas, antes de editar
 // Salida: 0 pasa · 3 no es un cambio chico o falló una compuerta · 1 no se puede evaluar.
+// El piso de carril (reglas de rutas y de contenido, en risk.cjs) no tiene flag para saltearlo.
 const { run, git, repoRoot, fs, path } = require('../../feature-close/scripts/lib.cjs');
 const { testGate, CODE, NOT_CODE, TEST } = require('../../feature-close/scripts/gates.cjs');
+const risk = require('./risk.cjs');
 const argv = process.argv.slice(2);
 const val = (n) => { const i = argv.indexOf(n); return i >= 0 ? argv[i + 1] : undefined; };
 const asJson = argv.includes('--json');
@@ -18,6 +21,27 @@ let cfg = {};
 try { cfg = (JSON.parse(fs.readFileSync(path.join(root, '.claude', 'dev-flow.json'), 'utf8')).quickFix) || {}; } catch { /* sin config */ }
 const lim = (k) => Math.max(1, Math.min(CEIL[k], Number.isInteger(cfg[k]) ? cfg[k] : DEF[k]));
 const maxFiles = lim('maxFiles'), maxLines = lim('maxLines');
+const isCode = (f) => CODE.test(f) && !NOT_CODE.test(f) && !TEST.test(f);
+const isDocOrTest = (f) => TEST.test(f) || /(^|\/)docs\//.test(f) || /\.(md|txt|rst)$/i.test(f);
+
+// Destino cuando no califica: un módulo nuevo (carpeta que no existe en HEAD) va primero por la arquitectura.
+const destination = (paths) => {
+  const fresh = paths.filter((f) => isCode(f)).map((f) => path.posix.dirname(f.replace(/\\/g, '/'))).filter((d) => d !== '.' && !git(root, ['ls-tree', '-d', 'HEAD', d]).stdout.trim());
+  return fresh.length ? `/arch:arch-first (carpeta nueva: ${[...new Set(fresh)].slice(0, 2).join(', ')}) y después /dev-flow:feature-flow` : '/dev-flow:feature-flow (o /dev-flow:feature-run)';
+};
+
+// --- Chequeo previo: solo rutas y cantidad, antes de escribir código.
+if (argv.includes('--plan')) {
+  const planned = String(val('--plan') || '').split(/[,\s]+/).map((f) => f.trim().replace(/\\/g, '/')).filter(Boolean);
+  if (!planned.length) fail('--plan necesita los archivos que pensás tocar, separados por coma.');
+  const reasons = risk.pathReasons(planned).map((r) => `${r.msg} (${r.files.slice(0, 3).join(', ')})`);
+  const nCode = planned.filter(isCode).length;
+  if (nCode > maxFiles) reasons.push(`toca ${nCode} archivos de código (máximo ${maxFiles})`);
+  const o = { ok: !reasons.length, why: reasons, files: planned.length, code: nCode, limits: { maxFiles, maxLines }, destination: reasons.length ? destination(planned) : null };
+  if (asJson) console.log(JSON.stringify(o, null, 2));
+  else console.log(o.ok ? `Las rutas califican para quick-fix (${nCode} de código, máximo ${maxFiles}). El contenido del diff se evalúa al final.` : ['NO califica para quick-fix:', ...reasons.map((w) => '- ' + w), '', `Seguí con ${o.destination}.`].join('\n'));
+  process.exit(o.ok ? 0 : 3);
+}
 
 const staged = git(root, ['diff', '--cached', '--name-status']).stdout.trim().split('\n').filter(Boolean).map((l) => l.split('\t'));
 if (!staged.length) fail('no hay nada en el índice. Agregá con git add solo los archivos del arreglo y volvé a correr.');
@@ -30,7 +54,6 @@ const last = (p) => p[p.length - 1];
 const files = staged.filter((p) => !/^docs\/CHANGELOG\.md$/.test(last(p)));
 const lines = {};
 for (const l of git(root, ['diff', '--cached', '--numstat']).stdout.trim().split('\n').filter(Boolean)) { const [a, d, f] = l.split('\t'); lines[f.replace(/^.* => /, '').replace(/[{}]/g, '')] = (Number(a) || 0) + (Number(d) || 0); }
-const isCode = (f) => CODE.test(f) && !NOT_CODE.test(f) && !TEST.test(f);
 const code = files.map(last).filter(isCode);
 const codeLines = code.reduce((n, f) => n + (lines[f] || 0), 0);
 const add = git(root, ['diff', '--cached', '--shortstat']).stdout.trim();
@@ -40,23 +63,25 @@ const why = [];
 if (code.length > maxFiles) why.push(`toca ${code.length} archivos de código (máximo ${maxFiles})`);
 if (codeLines > maxLines) why.push(`cambia ${codeLines} líneas de código (máximo ${maxLines})`);
 const all = files.map(last);
-const hit = (re) => all.filter((f) => re.test(f));
-const RULES = [
-  [/(^|\/)(package\.json|package-lock\.json|pnpm-lock\.yaml|yarn\.lock|requirements[\w.-]*\.txt|pyproject\.toml|poetry\.lock|Pipfile(\.lock)?|go\.(mod|sum)|Cargo\.(toml|lock)|pom\.xml|build\.gradle(\.kts)?|[\w.-]+\.csproj|packages\.config|Directory\.Packages\.props)$/i, 'cambia dependencias o el manifiesto del proyecto'],
-  [/\.(tf|tfvars|bicep|bicepparam)$|(^|\/)(azure-pipelines[\w.-]*\.ya?ml|\.github\/workflows\/)|(^|\/)(infra|infrastructure|iac|deploy|terraform|bicep)\//i, 'toca infraestructura o pipelines'],
-  [/(^|\/)(architecture\.json|ARCHITECTURE\.md)$|(^|\/)docs\/decisions\//, 'cambia la arquitectura o una decisión registrada'],
-  [/(auth|login|oauth|msal|token|secret|credential|password|permission|rbac|role|polic|identity|iam|crypto|session|cors|csrf)/i, 'toca identidad, permisos, secretos o sesión'],
-  [/(^|\/)migrations?\/|\.sql$/i, 'toca el esquema o datos persistentes'],
-  [/(^|\/)\.claude\/(?!\.feature-flow\/)/, 'cambia la configuración de Claude Code del repo'],
-];
-for (const [re, msg] of RULES) { const h = hit(re); if (h.length) why.push(`${msg} (${h.slice(0, 3).join(', ')}${h.length > 3 ? '…' : ''})`); }
-
-const out = { ok: false, small: why.length === 0, why, files: files.length, code: code.length, codeLines, limits: { maxFiles, maxLines }, gates: [] };
+for (const r of risk.pathReasons(all)) why.push(`${r.msg} (${r.files.slice(0, 3).join(', ')}${r.files.length > 3 ? '…' : ''})`);
+// Contenido: líneas agregadas Y eliminadas de todo lo que no sea prueba ni documentación.
+const diffText = git(root, ['diff', '--cached', '--unified=0', '--no-color']).stdout;
+const content = risk.contentRisks(diffText, isDocOrTest);
+for (const c of content.slice(0, 6)) why.push(`${c.msg}: ${c.file}:${c.line} (${c.sign === '-' ? 'línea eliminada' : 'línea agregada'}: ${c.text})`);
+if (content.length > 6) why.push(`y ${content.length - 6} línea(s) más con riesgo`);
+// Hallazgos de seguridad medios en archivos de código también sacan de este carril (no bloquean la feature).
+let sec = null;
+try {
+  const sc = path.join(__dirname, '..', '..', 'security-diff', 'scripts', 'secscan.cjs');
+  const r = run(process.execPath, [sc, '--range', '--cached', '--json'], { cwd: root, shell: false }); sec = JSON.parse(r.stdout || '{}');
+  for (const f of (sec.medium || []).filter((x) => isCode(x.file))) why.push(`hallazgo de seguridad ${f.id} en ${f.file}:${f.line}: ${f.msg}`);
+} catch { /* sin escáner */ }
+const out = { ok: false, small: why.length === 0, why, risks: content, files: files.length, code: code.length, codeLines, limits: { maxFiles, maxLines }, gates: [], destination: why.length ? destination(all) : null };
 const finish = (code_) => {
   if (asJson) console.log(JSON.stringify(out, null, 2));
   else {
     const L = [`Cambio: ${files.length} archivo(s), ${code.length} de código, ${codeLines} líneas de código (${add || 'sin estadística'}).`];
-    if (!out.small) L.push('', 'NO es un cambio chico:', ...why.map((w) => '- ' + w), '', 'Seguí el flujo completo: /dev-flow:feature-flow (o /dev-flow:feature-run). Lo ya escrito sirve: creá la feature y commiteá en su rama.');
+    if (!out.small) L.push('', 'NO es un cambio chico:', ...why.map((w) => '- ' + w), '', `Seguí el flujo completo, con auditoría: ${out.destination}. Lo ya escrito sirve: no lo descartes, creá la feature y commiteá en su rama. No partas el cambio ni edites la configuración para que pase.`);
     else { L.push('', 'Compuertas:', ...out.gates.map((g) => `- ${g.ok ? 'OK' : g.warn ? 'AVISO' : 'FALLA'} ${g.name}: ${g.note}`)); if (out.logged) L.push('', `Anotado en docs/CHANGELOG.md: ${out.logged}`); L.push('', out.ok ? (out.logged ? 'Listo para commitear.' : 'Pasa. Volvé a correr con --log "<qué se arregló>" para anotarlo y commitear.') : 'No commitees: corregí lo que falla y volvé a correr.'); }
     console.log(L.join('\n'));
   }
@@ -80,11 +105,7 @@ try {
   const r = run(process.execPath, [ac, '--json'], { cwd: root, shell: false }); const j = JSON.parse(r.stdout || '{}');
   if (j.configs) gate('arquitectura', !j.violations.length, j.violations.length ? j.violations.slice(0, 5).map((v) => `${v.file}${v.line ? ':' + v.line : ''}: ${v.msg}`).join('; ') : 'la regla de dependencia se cumple');
 } catch { /* sin architecture.json */ }
-try {
-  const sc = path.join(__dirname, '..', '..', 'security-diff', 'scripts', 'secscan.cjs');
-  const r = run(process.execPath, [sc, '--range', '--cached', '--json'], { cwd: root, shell: false }); const j = JSON.parse(r.stdout || '{}');
-  if (j.high) { gate('seguridad', !j.high.length, j.high.length ? j.high.map((f) => `${f.id} ${f.file}:${f.line} ${f.msg}`).join('; ') : `sin hallazgos altos${j.medium.length ? `; ${j.medium.length} medio(s) a mirar: ` + j.medium.slice(0, 3).map((f) => `${f.id} ${f.file}:${f.line}`).join(', ') : ''}`); }
-} catch { /* sin escáner */ }
+if (sec && sec.high) { const j = sec; gate('seguridad', !j.high.length, j.high.length ? j.high.map((f) => `${f.id} ${f.file}:${f.line} ${f.msg}`).join('; ') : `sin hallazgos altos${j.medium.length ? `; ${j.medium.length} medio(s) fuera del código: ` + j.medium.slice(0, 3).map((f) => `${f.id} ${f.file}:${f.line}`).join(', ') : ''}`); }
 
 out.ok = out.gates.every((g) => g.ok);
 const text = val('--log');
