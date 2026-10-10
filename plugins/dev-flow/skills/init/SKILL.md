@@ -25,7 +25,7 @@ Todo lo que se escribe lo escribe `init.cjs`, y solo los pasos que la persona ap
 
 `D="${CLAUDE_PLUGIN_ROOT}/skills/init/scripts"`. Corré `node "$D/init.cjs" detect`. Con `blank: true` → **Proyecto vacío**; si no → **Flujo rápido**.
 
-Cada plan va, con la herramienta Write, a un archivo temporal fuera del repo: `{"v":1,"approved":[<pasos>],"answers":{"mode":"features|tech-lead","profile":"<perfil>","share":true|false,"privateTerms":[...]}}`. Pasos: `gitignore`, `private-terms`, `claude-md`, `state`, `tech-lead`, `settings`, `ci`. Vista previa: `node "$D/init.cjs" preview --plan <archivo>` (devuelve `stamp`). Aplicar: `node "$D/init.cjs" apply --plan <archivo> --expect <stamp>`. Verificar: `node "$D/init.cjs" verify`.
+Cada plan va, con la herramienta Write, a un archivo temporal fuera del repo: `{"v":1,"approved":[<pasos>],"answers":{"mode":"features|tech-lead","profile":"<perfil>","share":true|false,"privateTerms":[...]}}`. Pasos: `gitignore`, `gitattributes`, `editorconfig`, `private-terms`, `claude-md`, `state`, `hygiene-plan`, `tech-lead`, `settings`, `ci`, `git-hook`. Vista previa: `node "$D/init.cjs" preview --plan <archivo>` (devuelve `stamp`). Aplicar: `node "$D/init.cjs" apply --plan <archivo> --expect <stamp>`. Verificar: `node "$D/init.cjs" verify`.
 
 ## Proyecto vacío
 
@@ -50,10 +50,16 @@ Sin manifiesto ni código, solo documentos.
    - `existing-claude-md`: el texto de la persona queda igual; solo se agrega al final. `existing-dev-flow`: el repo ya trabajaba como Tech Lead.
    - `legacy-estado`: el estado vive en `docs/ESTADO.md` (nombre anterior); sigue funcionando. Para unificar en `docs/STATE.md`: `git mv docs/ESTADO.md docs/STATE.md`.
    - Un paso con `conflicts` (por ejemplo, un plugin que alguien ya puso en `false`): se respeta; decilo en una línea.
+   - **Faltan para el arnés** (`summary.harnessGaps`, códigos `no-test`, `no-lint`, `no-typecheck`, `no-build`, `test-watch`): una línea por cada uno, con qué deja de verificarse. El paso `hygiene-plan` los anota en `docs/STATE.md` como primera feature, en su propia rama. No generes scripts, configs ni dependencias: es decisión de la persona.
+   - `test-watch`: el script de pruebas entra en modo watch; ai-env lo corre igual con `CI=1`, pero un worker o la persona pueden quedar esperando.
+   - `mixed-eol`: hay archivos commiteados con CRLF (`summary.crlfFiles`). `.gitattributes` no los toca; normalizarlos (`git add --renormalize .`) es un commit aparte y lo decide la persona. Nunca lo hagas por tu cuenta.
+   - `dirty-other`: hay cambios sin commitear (`summary.dirty`) en archivos que init no toca; quedan afuera del commit. Si `preview` vuelve `dirty-target`, init iba a tocar un archivo con cambios pendientes: pedí commitearlos o guardarlos (`git stash`) antes.
+   - `git-hook-other`: el repo ya usa otro gestor de git hooks (husky, pre-commit, lefthook o `core.hooksPath`): el paso `git-hook` no se ofrece.
+   - `no-commits`: el repo no tiene commits todavía; no se chequea el árbol sucio.
    - `settings-invalid`: `.claude/settings.json` no es JSON válido y no se toca.
 
    Después, UNA pregunta con tres opciones: **Aplicar lo recomendado** (Recomendado), **Revisar punto por punto**, **Cancelar**.
-4. Aplicar: `apply` con el `stamp` (si vuelve `stale-preview`, preview de nuevo y preguntá de nuevo), después `verify`. Informá `notes` (respaldo) y cualquier FALLA de `verify`. Revisar: los pasos de abajo, con las respuestas ya dadas. Cancelar: decí que no se escribió nada.
+4. Aplicar: `apply` con el `stamp` (si vuelve `stale-preview`, preview de nuevo y preguntá de nuevo), después `verify`. Si vuelve `rolled-back`, algo falló a mitad y se revirtió todo: decilo y mostrá el motivo; exit 3 (`partial`) significa que ni el rollback pudo y hay que mirar `git status`. Informá `notes` (respaldo) y cualquier FALLA de `verify`. Revisar: los pasos de abajo, con las respuestas ya dadas. Cancelar: decí que no se escribió nada.
 5. Si `summary.next` es `arch:arch-first`, seguí con esa skill y el tipo sugerido (`found.suggestedType`). Las decisiones de stack que la persona confirme (gestor de paquetes, framework, despliegue) van con `arch:adr`. Después, **Commit**.
 
 ## Revisar punto por punto
@@ -65,12 +71,14 @@ Un paso por mensaje, cada uno con una pregunta como mucho.
 4. **.gitignore** (`gitignore`) y **términos privados** (`private-terms`): se niega si `.private-terms` no queda ignorado, así que va con el anterior salvo que ya esté ignorado.
 5. **Perfil de plugins** (`settings`). Activa los del perfil y apaga los demás en este repo, en `.claude/settings.json` (compartido) o `.claude/settings.local.json` (solo tu máquina, requiere que esté ignorado). Nunca pisa una clave que ya existe: la informa en `conflicts`. Si el archivo existía, se respalda en `~/.claude/ai-env/init-backup/` antes de reescribirlo.
 6. **CI** (`ci`, opcional). Workflows de arquitectura y seguridad, y dependabot.
-7. **Vista previa y sí.** Plan con los pasos aceptados, `preview`, cada `refused` con su motivo; pedí el sí y guardá el `stamp`.
-8. **Aplicar y verificar.** Como en el flujo rápido.
+7. **Fines de línea y editor** (`gitattributes`, `editorconfig`): solo si no existen. `* text=auto` (LF en el repo, el nativo al trabajar), `.sh` en LF y `.cmd`/`.bat` en CRLF; `.editorconfig` con utf-8, línea final y la indentación que ya usa el repo.
+8. **Pre-commit nativo** (`git-hook`, opcional): secscan sobre el índice (frena severidad alta) y arch-check si hay `architecture.json`, también para commits fuera de Claude Code. La copia vive en `~/.claude/ai-env/git-hooks/` (`/dev-flow:setup --apply` la actualiza). Es una red de seguridad: `--no-verify` lo saltea; lo obligatorio es el CI.
+9. **Vista previa y sí.** Plan con los pasos aceptados, `preview`, cada `refused` con su motivo; pedí el sí y guardá el `stamp`.
+10. **Aplicar y verificar.** Como en el flujo rápido.
 
 ## Commit
 
-Mostrá `nextCommit.files` y el mensaje. Commiteá solo con un sí y, en un repo compartido, en la rama `nextCommit.branch`. `.private-terms` nunca entra (git lo ignora). Nunca push. Con Tech Lead, recordá lo que se hace una sola vez: `ticket.cjs labels` (con `gh`) y `/dev-flow:setup --worktrees`.
+Mostrá `nextCommit.files` y el mensaje. Commiteá solo con un sí y, en un repo compartido, en la rama `nextCommit.branch`, con `nextCommit.command` (commitea solo esos archivos: otros cambios en curso quedan afuera). `.private-terms` nunca entra (git lo ignora). Nunca push. Con Tech Lead, recordá lo que se hace una sola vez: `ticket.cjs labels` (con `gh`) y `/dev-flow:setup --worktrees`.
 
 ## Reglas
 

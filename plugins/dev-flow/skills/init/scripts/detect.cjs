@@ -57,6 +57,42 @@ function detect(dir) {
       : signals.cloud.length ? ['cloud', `infraestructura como código: ${signals.cloud.join(', ')}`]
         : signals.app.length ? ['app', `API o backend sin UI: ${signals.app.join(', ')}`]
           : ['core', 'sin señales de UI, infraestructura ni API'];
+  // Brownfield: lo que el arnés necesita para verificar sin colgarse.
+  const needsBuild = lang.includes('ts') || ['vite', 'next', 'webpack', 'rollup', 'esbuild', 'parcel', 'tsup', '@angular/core'].some((k) => deps[k]);
+  const testScript = (pkg.scripts && pkg.scripts.test) || '';
+  const testWatch = /--watch(?!=false|All=false)(All)?\b/.test(testScript) ? 'usa --watch'
+    : /\breact-scripts test\b/.test(testScript) && !/--watchAll=false/.test(testScript) ? 'react-scripts test entra en watch sin CI'
+      : /\bng test\b/.test(testScript) && !/--watch=false|--no-watch/.test(testScript) ? 'ng test (Karma) entra en watch sin --watch=false'
+        : /\bvitest\b/.test(testScript) && !/\bvitest\s+run\b|--run\b/.test(testScript) ? 'vitest sin `run` entra en watch fuera de CI'
+          : /\b(nodemon|ptw)\b|node\s+--watch/.test(testScript) ? 'corre con un vigilante de archivos' : null;
+  // Finales de línea ya commiteados con CRLF (no se renormaliza solo: es decisión de la persona).
+  const eol = spawnSync('git', ['ls-files', '--eol'], { cwd: dir, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
+  const crlf = eol.status === 0 ? eol.stdout.split('\n').filter((l) => /^i\/(crlf|mixed)\b/.test(l)).map((l) => l.split('\t').pop()) : [];
+  // Indentación más frecuente por extensión (solo si es clara: ≥ 5 archivos y ≥ 70 % de acuerdo).
+  const indent = {};
+  {
+    const by = {};
+    for (const f of files.filter((x) => /\.(js|jsx|ts|tsx|mjs|cjs|json|py|cs|ps1|psm1|tf|bicep|ya?ml|css|scss|html|vue|go|java|sh)$/i.test(x)).slice(0, 400)) {
+      const ext = path.extname(f).slice(1).toLowerCase();
+      const lines = read(f).split('\n').filter((l) => /^[ \t]+\S/.test(l)).slice(0, 200);
+      if (!lines.length) continue;
+      const tabs = lines.filter((l) => l[0] === '\t').length;
+      const spaces = lines.filter((l) => l[0] === ' ').map((l) => l.match(/^ +/)[0].length);
+      let style;
+      if (tabs > spaces.length) style = 'tab';
+      else { const min = Math.min(...spaces); style = min === 2 || min === 4 ? `space${min}` : null; }
+      if (style) (by[ext] = by[ext] || []).push(style);
+    }
+    for (const [ext, v] of Object.entries(by)) {
+      if (v.length < 5) continue;
+      const top = Object.entries(v.reduce((m, x) => ((m[x] = (m[x] || 0) + 1), m), {})).sort((a, b) => b[1] - a[1])[0];
+      if (top[1] / v.length >= 0.7) indent[ext] = top[0] === 'tab' ? { style: 'tab' } : { style: 'space', size: Number(top[0].slice(5)) };
+    }
+  }
+  // Otros gestores de git hooks: si existen, el pre-commit de ai-env no se instala.
+  const gitCfg = (k) => { const r = spawnSync('git', ['config', '--get', k], { cwd: dir, encoding: 'utf8' }); return r.status === 0 ? r.stdout.trim() : ''; };
+  const hookManagers = [...(gitCfg('core.hooksPath') ? ['core.hooksPath'] : []), ...(has('.husky') ? ['husky'] : []), ...(has('.pre-commit-config.yaml') ? ['pre-commit'] : []), ...(has('lefthook.yml') || has('.lefthook.yml') ? ['lefthook'] : [])];
+  const head = spawnSync('git', ['rev-parse', '--verify', '-q', 'HEAD'], { cwd: dir, encoding: 'utf8' }).status === 0;
   const code = files.filter((f) => !DOC_ONLY.test(path.basename(f)) && !f.startsWith('.github/') && f !== '.gitignore' && f !== '.gitattributes');
   return {
     dir, languages: lang, frameworks, packageManager: pm, scripts, suggestedType: suggested,
@@ -67,6 +103,7 @@ function detect(dir) {
     remote: remoteUrl ? (/github\.com[:/]/i.test(remoteUrl) ? 'github' : 'otro') : null,
     blank: code.length === 0,
     suggestedProfile, profileReason,
+    needsBuild, testWatch, crlfFiles: crlf, indent, hookManagers, hasCommits: head,
   };
 }
 

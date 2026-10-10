@@ -570,7 +570,7 @@ if (needAll && git.status === 0) {
   const ib = fs.mkdtempSync(path.join(os.tmpdir(), 'kit-pi-blank-'));
   spawnSync('git', ['init', '-q'], { cwd: ib }); fs.writeFileSync(path.join(ib, 'README.md'), '# Idea\n');
   const db = J(N(ib, IN, ['detect']));
-  check('init: un repo con solo documentos es "vacío" y recomienda solo las bases', db.blank === true && db.summary.mode === 'blank' && JSON.stringify(db.summary.recommended.features) === JSON.stringify(['gitignore', 'claude-md', 'state']));
+  check('init: un repo con solo documentos es "vacío" y recomienda solo las bases', db.blank === true && db.summary.mode === 'blank' && JSON.stringify(db.summary.recommended.features) === JSON.stringify(['gitignore', 'gitattributes', 'editorconfig', 'claude-md', 'state']));
   check('init: fuera de un repo git se niega con una alternativa', N(os.tmpdir(), IN, ['detect']).code === 1 && /git init/.test(lastOut));
   for (const d of [ip, ib, ihome]) fs.rmSync(d, { recursive: true, force: true });
   fs.rmSync(planF, { force: true });
@@ -992,6 +992,9 @@ process.exit(0);`);
 
 // --- quick-fix blindado (reglas de ruta y contenido) y burn-rate
 require('./quick-risk.cjs')({ check, add });
+
+// --- init en repos existentes: árbol sucio, rollback, fines de línea, brechas, watch y pre-commit nativo
+require('./brownfield.cjs')({ check, add });
 
 // --- Perfiles de plugins (shared/profiles.json, instaladores)
 require('./profiles.cjs')({ check, add });

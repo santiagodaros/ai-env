@@ -93,7 +93,7 @@ if (!out.small) finish(3);
 const gate = (name, ok, note, warn = false) => out.gates.push({ name, ok, note, warn });
 let pkg = {}; try { pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')); } catch { /* sin package.json */ }
 const scripts = ['typecheck', 'lint', 'test'].filter((n) => pkg.scripts && pkg.scripts[n]);
-for (const n of scripts) { const r = run('npm', ['run', n, '--silent'], { cwd: root, timeout: 300000 }); gate(`npm run ${n}`, r.status === 0, r.status === 0 ? 'pasa' : `${r.stdout || ''}${r.stderr || ''}`.trim().split('\n').slice(-12).join('\n  ')); }
+for (const n of scripts) { const r = run('npm', ['run', n, '--silent'], { cwd: root, timeout: 300000, env: { ...process.env, CI: '1' } }) /* CI=1: react-scripts, ng test o vitest no entran en watch */; gate(`npm run ${n}`, r.status === 0, r.status === 0 ? 'pasa' : `${r.stdout || ''}${r.stderr || ''}`.trim().split('\n').slice(-12).join('\n  ')); }
 if (!scripts.length) gate('verificaciones', true, 'el repo no tiene scripts typecheck, lint ni test: nada que correr', true);
 
 const noTest = val('--no-test');

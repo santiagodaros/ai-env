@@ -39,7 +39,7 @@ const names = ['typecheck', 'lint', 'test'].filter(n => pkg.scripts && pkg.scrip
 const results = [];
 for (const n of names) {
   if (argv.includes('--run')) {
-    const r = run('npm', ['run', n, '--silent'], { cwd: root, timeout: 300000 });
+    const r = run('npm', ['run', n, '--silent'], { cwd: root, timeout: 300000, env: { ...process.env, CI: '1' } }) /* CI=1: sin modo watch */;
     results.push(`- \`npm run ${n}\`: ${r.status === 0 ? 'OK' : 'FALLA (exit ' + r.status + ')'}`);
     if (r.status !== 0) results.push('  ```\n  ' + `${r.stdout || ''}${r.stderr || ''}`.trim().slice(-400).replace(/\n/g, '\n  ') + '\n  ```');
   } else results.push(`- \`npm run ${n}\`: existe, no se corrió (agregá --run)`);

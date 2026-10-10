@@ -16,7 +16,8 @@ const crypto = require('crypto');
 const { spawnSync } = require('child_process');
 const { detect: detectStack } = require('./detect.cjs');
 
-const STEP_IDS = ['gitignore', 'private-terms', 'claude-md', 'state', 'tech-lead', 'settings', 'ci'];
+const STEP_IDS = ['gitignore', 'gitattributes', 'editorconfig', 'private-terms', 'claude-md', 'state', 'hygiene-plan', 'tech-lead', 'settings', 'ci', 'git-hook'];
+const GH = require('../../../lib/git-hook.cjs');
 const T = path.join(__dirname, '..', 'templates');
 const GITIGNORE = ['.claude/.feature-flow/', '.claude/worktrees/', '.dev-flow/', '.claude/settings.local.json', 'CLAUDE.local.md', '.private-terms', 'tfplan', '*.tfplan', 'plan.json', 'whatif.json'];
 const PROFILES = require('../../../lib/profiles.json'); // copia de shared/profiles.json
@@ -65,7 +66,7 @@ function readPlan(file) {
 // Sistema de archivos simulado: cada paso planea contra el estado que dejan los anteriores, así preview y apply coinciden.
 function overlay(root) {
   const mem = new Map();
-  const abs = (f) => path.join(root, f);
+  const abs = (f) => (path.isAbsolute(f) ? f : path.join(root, f));
   return {
     read(f) { if (mem.has(f)) return mem.get(f); try { return fs.readFileSync(abs(f), 'utf8'); } catch { return null; } },
     write(f, t) { mem.set(f, t); },
@@ -94,6 +95,29 @@ const AGENTS_BLOCK = ['<!-- agents:start -->', '## Forma de trabajo: Tech Lead y
   '- Merge: lo decide una persona, con veredicto `aprobar` y checks verdes.',
   '<!-- agents:end -->', ''].join('\n');
 
+// Lo que el arnés necesita y el repo no tiene: se muestra como "faltan para el arnés" y lo anota hygiene-plan.
+function harnessGaps(det) {
+  if (det.blank || det.packageManager === null) return [];
+  const g = [];
+  if (!det.scripts.includes('test')) g.push({ id: 'test', text: 'script `test`: sin él no hay compuerta de pruebas (quick-fix, feature-close, workers)' });
+  else if (det.testPlaceholder) g.push({ id: 'test', text: 'script `test` de relleno: no prueba nada; reemplazarlo por el runner real' });
+  if (det.testWatch) g.push({ id: 'test-watch', text: `script \`test\` en modo watch (${det.testWatch}): ai-env corre las pruebas con CI=1, pero conviene que el script termine solo` });
+  if (!det.scripts.includes('lint')) g.push({ id: 'lint', text: 'script `lint`: stop-verify no puede frenar errores de estilo o bugs obvios' });
+  if (det.languages.includes('ts') && !det.scripts.includes('typecheck')) g.push({ id: 'typecheck', text: 'script `typecheck` (tsc --noEmit): stop-verify no ve errores de tipos' });
+  if (det.needsBuild && !det.scripts.includes('build')) g.push({ id: 'build', text: 'script `build`: no se verifica que el proyecto compile antes del PR' });
+  return g;
+}
+
+const GITATTRIBUTES = '# Fines de línea: el repo guarda LF y cada sistema trabaja con el suyo. Lo creó /dev-flow:init.\n# Si ya había archivos con CRLF commiteados, normalizarlos es un commit aparte: git add --renormalize .\n* text=auto\n*.sh text eol=lf\n*.cmd text eol=crlf\n*.bat text eol=crlf\n';
+function editorconfigOf(det) {
+  const L = ['# Lo creó /dev-flow:init con lo que ya usa el repo. https://editorconfig.org', 'root = true', '', '[*]', 'charset = utf-8', 'insert_final_newline = true', 'trim_trailing_whitespace = true'];
+  const groups = {};
+  for (const [ext, v] of Object.entries(det.indent || {})) { const k = v.style === 'tab' ? 'tab' : `space${v.size}`; (groups[k] = groups[k] || []).push(ext); }
+  for (const [k, exts] of Object.entries(groups).sort()) L.push('', exts.length > 1 ? `[*.{${exts.sort().join(',')}}]` : `[*.${exts[0]}]`, ...(k === 'tab' ? ['indent_style = tab'] : ['indent_style = space', `indent_size = ${k.slice(5)}`]));
+  L.push('', '[*.md]', 'trim_trailing_whitespace = false');
+  return L.join('\n') + '\n';
+}
+
 const appendText = (cur, block) => (cur === null || cur === '' ? block : cur + (cur.endsWith('\n') ? '\n' : '\n\n') + block);
 
 // Cada paso devuelve { status: 'would-do'|'nothing'|'refused', reason?, actions: [{ path, op, desc, content }] }.
@@ -105,6 +129,15 @@ const STEPS = {
     if (!miss.length) return { status: 'nothing', reason: '.gitignore ya cubre el estado local' };
     const content = (cur && !cur.endsWith('\n') ? '\n' : '') + '# Claude Code: estado local\n' + miss.join('\n') + '\n';
     return { status: 'would-do', actions: [{ path: '.gitignore', op: cur ? 'append' : 'create', desc: `ignorar ${miss.join(', ')}`, content: cur ? content : content.replace(/^\n/, '') }] };
+  },
+  gitattributes(ctx) {
+    if (ctx.fs.read('.gitattributes') !== null) return { status: 'nothing', reason: '.gitattributes ya existe: se respeta tal cual' };
+    return { status: 'would-do', actions: [{ path: '.gitattributes', op: 'create', desc: 'fines de línea: * text=auto (LF en el repo, el nativo al trabajar), .sh en LF y .cmd/.bat en CRLF. No renormaliza nada', content: GITATTRIBUTES }] };
+  },
+  editorconfig(ctx) {
+    if (ctx.fs.read('.editorconfig') !== null) return { status: 'nothing', reason: '.editorconfig ya existe: se respeta tal cual' };
+    const n = Object.keys(ctx.det.indent || {}).length;
+    return { status: 'would-do', actions: [{ path: '.editorconfig', op: 'create', desc: `utf-8, línea final y sin espacios sobrantes${n ? `; indentación detectada en ${n} tipo(s) de archivo` : '; sin indentación (no se pudo detectar con certeza)'}`, content: editorconfigOf(ctx.det) }] };
   },
   'private-terms'(ctx) {
     const terms = ctx.answers.privateTerms;
@@ -135,6 +168,15 @@ const STEPS = {
     if (cur === null) return { status: 'would-do', actions: [{ path: 'docs/STATE.md', op: 'create', desc: `crear docs/STATE.md (el hook rehydrate lo reinyecta tras /compact${tl ? '; con el bloque que estado.cjs completa desde GitHub' : ''})`, content: STATE_TEMPLATE + (tl ? STATE_GENERATED : '') }] };
     if (tl && !cur.includes('<!-- estado:start -->')) return { status: 'would-do', actions: [{ path: 'docs/STATE.md', op: 'append', desc: 'agregar a docs/STATE.md el bloque que estado.cjs completa desde GitHub (lo tuyo queda igual)', content: (cur.endsWith('\n') ? '' : '\n') + STATE_GENERATED }] };
     return { status: 'nothing', reason: 'docs/STATE.md ya está' };
+  },
+  'hygiene-plan'(ctx) {
+    const gaps = harnessGaps(ctx.det);
+    if (!gaps.length) return { status: 'nothing', reason: 'no faltan scripts para el arnés' };
+    const cur = ctx.fs.read('docs/STATE.md');
+    if (cur === null) return { status: 'refused', reason: 'docs/STATE.md no existe: aprobá también el paso state (o usá docs/ESTADO.md)' };
+    if (cur.includes('<!-- hygiene:start -->')) return { status: 'nothing', reason: 'docs/STATE.md ya tiene el plan de higiene' };
+    const block = ['<!-- hygiene:start -->', '## Higiene para el arnés (pendiente)', '', 'Primera feature sugerida, en su propia rama. No se generan scripts ni dependencias solos: es decisión de la persona.', '', ...gaps.map((g) => `- [ ] ${g.text}`), '<!-- hygiene:end -->', ''].join('\n');
+    return { status: 'would-do', actions: [{ path: 'docs/STATE.md', op: 'append', desc: `anotar en docs/STATE.md lo que falta para el arnés (${gaps.map((g) => g.id).join(', ')}) como primera feature`, content: appendText(cur, block).slice(cur.length) }] };
   },
   'tech-lead'(ctx) {
     if (ctx.answers.mode !== 'tech-lead') return { status: 'refused', reason: 'el paso tech-lead necesita answers.mode = "tech-lead"' };
@@ -181,6 +223,23 @@ const STEPS = {
     const what = [on.length ? `activa ${on.join(', ')}` : '', off.length ? `apaga ${off.join(', ')} en este repo` : ''].filter(Boolean).join('; ');
     return { status: 'would-do', ...(conflicts.length ? { conflicts } : {}), actions: [{ path: f, op: raw === null ? 'create' : 'merge', desc: `${prof ? `perfil ${prof}` : 'plugins base'}${what ? `: ${what}` : ''} (${ctx.answers.share ? 'para todo el que clone el repo' : 'solo en tu máquina'}; lo que había se conserva)`, content: JSON.stringify(next, null, 2) + '\n' }] };
   },
+  'git-hook'(ctx) {
+    if (ctx.det.hookManagers.length) return { status: 'refused', reason: `el repo ya usa ${ctx.det.hookManagers.join(', ')} para sus git hooks: no se instala el de ai-env (sumá secscan ahí si querés)` };
+    const common = spawnSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd: ctx.root, encoding: 'utf8' });
+    if (common.status !== 0) return { status: 'refused', reason: 'no se pudo ubicar la carpeta .git' };
+    const hook = path.join(common.stdout.trim(), 'hooks', 'pre-commit');
+    const cur = ctx.fs.read(hook);
+    if (cur !== null && !cur.includes(GH.MARK)) return { status: 'refused', reason: 'ya hay un pre-commit propio en .git/hooks: no se pisa (sumá secscan ahí si querés)' };
+    const A = [];
+    const d = GH.dir();
+    for (const [rel, src] of GH.FILES) {
+      const target = path.join(d, rel), want = fs.readFileSync(src, 'utf8'), have = ctx.fs.read(target);
+      if (have !== want) A.push({ path: target, abs: true, op: have === null ? 'create' : 'replace', desc: `${have === null ? 'copiar' : 'actualizar'} ${rel} en ${d} (fuera del plugin: su ruta cambia con cada versión)`, content: want });
+    }
+    const shim = GH.shim(d);
+    if (cur !== shim) A.push({ path: hook, abs: true, op: cur === null ? 'create' : 'replace', exec: true, desc: `${cur === null ? 'instalar' : 'actualizar'} .git/hooks/pre-commit: secscan sobre el índice (frena severidad alta) y arch-check si hay architecture.json. Red de seguridad: --no-verify lo saltea`, content: shim });
+    return A.length ? { status: 'would-do', actions: A } : { status: 'nothing', reason: 'el pre-commit de ai-env ya está instalado y al día' };
+  },
   ci(ctx) {
     const A = [];
     for (const f of ['workflows/architecture.yml', 'workflows/security.yml', 'dependabot.yml']) {
@@ -204,7 +263,7 @@ function runSteps(root, plan, det) {
 // Huella: el plan y, por acción, el contenido a escribir y el estado actual del archivo. Si algo cambia, apply se niega.
 function stampOf(root, plan, steps) {
   const canon = steps.map((s) => ({ id: s.id, status: s.status, reason: s.reason || null, actions: (s.actions || []).map((a) => {
-    let before = null; try { before = sha(fs.readFileSync(path.join(root, a.path))); } catch { /* no existe */ }
+    let before = null; try { before = sha(fs.readFileSync(a.abs ? a.path : path.join(root, a.path))); } catch { /* no existe */ }
     return { path: a.path, op: a.op, content: sha(a.content), before };
   }) }));
   return sha(JSON.stringify({ plan, steps: canon })).slice(0, 24);
@@ -218,29 +277,49 @@ function backupDir(root) {
   return path.join(home, '.claude', 'ai-env', 'init-backup', `${path.basename(root)}-${sha(root).slice(0, 8)}`, new Date().toISOString().replace(/[:.]/g, '-'));
 }
 
+// Escribe en orden y lleva un diario; si algo falla a mitad, deshace todo lo escrito (borra lo creado, trunca lo
+// agregado y restaura lo reescrito) y avisa qué se revirtió. exit 3 solo si el rollback también falló.
+// AI_ENV_INIT_FAIL_AT=<ruta> fuerza una falla al escribir esa ruta (solo para las pruebas del rollback).
 function apply(root, steps) {
   const done = [];
   const notes = [];
+  const journal = [];
   let bdir = null;
   for (const s of steps) {
     if (s.status !== 'would-do') continue;
     for (const a of s.actions) {
-      const abs = path.join(root, a.path);
+      const abs = a.abs ? a.path : path.join(root, a.path);
       try {
+        if (process.env.AI_ENV_INIT_FAIL_AT && path.resolve(abs) === path.resolve(root, process.env.AI_ENV_INIT_FAIL_AT)) throw new Error('falla inyectada (AI_ENV_INIT_FAIL_AT)');
+        const existed = fs.existsSync(abs);
+        const prev = existed ? fs.readFileSync(abs) : null;
+        if (a.op === 'create' && existed) throw new Error(`${a.path} apareció entre el preview y el apply`);
+        const madeDirs = [];
+        for (let d = path.dirname(abs); !fs.existsSync(d); d = path.dirname(d)) madeDirs.unshift(d);
         fs.mkdirSync(path.dirname(abs), { recursive: true });
-        if (a.op === 'create') { if (fs.existsSync(abs)) throw new Error(`${a.path} apareció entre el preview y el apply`); fs.writeFileSync(abs, a.content); }
-        else if (a.op === 'append') fs.appendFileSync(abs, a.content);
-        else if (a.op === 'merge') {
+        journal.push({ abs, prev, madeDirs });
+        if (a.op === 'merge') {
           bdir = bdir || backupDir(root);
           fs.mkdirSync(path.dirname(path.join(bdir, a.path)), { recursive: true });
-          fs.copyFileSync(abs, path.join(bdir, a.path));
-          fs.writeFileSync(abs, a.content);
+          fs.writeFileSync(path.join(bdir, a.path), prev);
         }
+        if (a.op === 'append') fs.appendFileSync(abs, a.content); else fs.writeFileSync(abs, a.content);
+        if (a.exec) { try { fs.chmodSync(abs, 0o755); } catch { /* Windows: no hace falta */ } }
         done.push(a.path);
       } catch (e) {
-        const err = new Fail('partial', `falló ${a.path}: ${e.message}`, `quedaron escritos: ${done.join(', ') || 'nada'}. Revisá git status${bdir ? ` (respaldo en ${bdir})` : ''} antes de repetir`);
-        err.done = done; err.backup = bdir;
-        throw err;
+        const failedRb = [];
+        for (const j of journal.reverse()) {
+          try {
+            if (j.prev === null) { if (fs.existsSync(j.abs)) fs.unlinkSync(j.abs); for (const d of [...j.madeDirs].reverse()) { try { fs.rmdirSync(d); } catch { /* no vacía */ } } }
+            else fs.writeFileSync(j.abs, j.prev);
+          } catch (re) { failedRb.push(`${j.abs}: ${re.message}`); }
+        }
+        if (failedRb.length) {
+          const err = new Fail('partial', `falló ${a.path}: ${e.message}; y no se pudo revertir: ${failedRb.join('; ')}`, `revisá git status${bdir ? ` (respaldo en ${bdir})` : ''} antes de repetir`);
+          err.done = done; throw err;
+        }
+        const err = new Fail('rolled-back', `falló ${a.path}: ${e.message}. Se revirtió todo lo escrito (${done.length} archivo(s)): el repo quedó como estaba`, 'corregí la causa y volvé a correr preview y apply');
+        err.reverted = done; throw err;
       }
     }
   }
@@ -270,10 +349,20 @@ function summaryOf(root, det) {
   if (existing.claudeMd) attention.push('existing-claude-md');
   if (existing.devflowJson) attention.push('existing-dev-flow');
   if (!fs.existsSync(path.join(root, 'docs', 'STATE.md')) && fs.existsSync(path.join(root, 'docs', 'ESTADO.md'))) attention.push('legacy-estado');
+  if (!det.blank && det.needsBuild && det.packageManager !== null && !det.scripts.includes('build')) attention.push('no-build');
+  if (det.testWatch) attention.push('test-watch');
+  if (det.crlfFiles.length) attention.push('mixed-eol');
+  if (det.hookManagers.length) attention.push('git-hook-other');
+  const dirty = det.hasCommits ? dirtyFiles(root) : [];
+  if (dirty.length) attention.push('dirty-other');
+  if (!det.hasCommits) attention.push('no-commits');
   return {
     existing,
     summary: {
       mode: det.blank ? 'blank' : 'existing',
+      harnessGaps: harnessGaps(det),
+      dirty: dirty.slice(0, 20),
+      crlfFiles: det.crlfFiles.slice(0, 10),
       found: { languages: det.languages, frameworks: det.frameworks, packageManager: det.packageManager, scripts: det.scripts, suggestedType: det.suggestedType, remote: det.remote, projectPlugins: det.projectPlugins, suggestedProfile: det.suggestedProfile, profileReason: det.profileReason },
       ask: det.blank
         ? [{ id: 'create-base', kind: 'yes-no', default: true }]
@@ -284,9 +373,9 @@ function summaryOf(root, det) {
           { id: 'privateTerms', kind: 'free-text', default: [], maps: 'private-terms' },
         ],
       recommended: det.blank
-        ? { features: would('features', ['gitignore', 'claude-md', 'state']) }
-        : { features: would('features', ['gitignore', 'claude-md', 'state', 'settings']), 'tech-lead': would('tech-lead', ['gitignore', 'claude-md', 'state', 'tech-lead', 'settings']) },
-      optional: det.blank ? [] : ['ci'],
+        ? { features: would('features', ['gitignore', 'gitattributes', 'editorconfig', 'claude-md', 'state']) }
+        : { features: would('features', ['gitignore', 'gitattributes', 'editorconfig', 'claude-md', 'state', 'hygiene-plan', 'settings']), 'tech-lead': would('tech-lead', ['gitignore', 'gitattributes', 'editorconfig', 'claude-md', 'state', 'hygiene-plan', 'tech-lead', 'settings']) },
+      optional: det.blank ? [] : ['ci', 'git-hook'],
       attention,
       next: det.blank || !det.hasArchitecture ? 'arch:arch-first' : null,
     },
@@ -313,13 +402,26 @@ function verify(root) {
     add(cm && cm.includes('@AGENTS.md') ? 'OK' : 'AVISO', 'CLAUDE.md importa AGENTS.md (modo Tech Lead)');
     add(read('docs/PRD.md') !== null ? 'OK' : 'AVISO', 'docs/PRD.md existe');
   }
+  const common = spawnSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd: root, encoding: 'utf8' });
+  const hook = common.status === 0 ? path.join(common.stdout.trim(), 'hooks', 'pre-commit') : null;
+  const h = hook ? (() => { try { return fs.readFileSync(hook, 'utf8'); } catch { return null; } })() : null;
+  if (h && h.includes(GH.MARK)) add(fs.existsSync(path.join(GH.dir(), 'pre-commit.cjs')) ? (GH.stale().length ? 'AVISO' : 'OK') : 'FALLA', 'pre-commit de ai-env', !fs.existsSync(path.join(GH.dir(), 'pre-commit.cjs')) ? `falta ${path.join(GH.dir(), 'pre-commit.cjs')}: volvé a correr el paso git-hook` : GH.stale().length ? 'la copia quedó vieja: /dev-flow:setup --apply la actualiza' : '');
   return { ok: !checks.some((c) => c.res === 'FALLA'), checks };
 }
 
 function nextCommit(root, done) {
-  const files = done.filter((f) => !ignoredByGit(root, f));
+  const files = done.filter((f) => !path.isAbsolute(f) && !ignoredByGit(root, f));
   if (!files.length) return null;
-  return { files, branch: 'chore/dev-flow-init', message: 'chore: inicializa dev-flow en el repo' };
+  const message = 'chore: inicializa dev-flow en el repo';
+  // Solo estos archivos: `--` deja afuera cualquier otro cambio que la persona tenga en curso.
+  return { files, branch: 'chore/dev-flow-init', message, command: `git add -- ${files.map((f) => JSON.stringify(f)).join(' ')} && git commit -m ${JSON.stringify(message)} -- ${files.map((f) => JSON.stringify(f)).join(' ')}` };
+}
+
+// Árbol sucio: frena si un archivo que el plan va a tocar tiene cambios sin commitear; el resto solo se avisa.
+// Un repo sin ningún commit todavía no se chequea (todo está sin seguimiento por definición).
+function dirtyFiles(root) {
+  const r = spawnSync('git', ['status', '--porcelain', '--untracked-files=all'], { cwd: root, encoding: 'utf8' });
+  return r.status === 0 ? r.stdout.split('\n').filter((l) => l.trim()).map((l) => l.slice(3).split(' -> ').pop().trim().replace(/^"|"$/g, '')) : [];
 }
 
 function main(argv) {
@@ -334,8 +436,14 @@ function main(argv) {
   const plan = readPlan(o.plan);
   const steps = runSteps(root, plan, det);
   const stamp = stampOf(root, plan, steps);
+  if (o.verb === 'apply' && stamp !== o.expect) return { body: { ok: false, kind: 'stale-preview', reason: 'el plan o el repo cambiaron desde el preview: no se escribió nada' }, code: 1, alt: 'volvé a correr preview, mostrale el resultado nuevo a la persona y repetí apply con el stamp nuevo' };
+  if (det.hasCommits) {
+    const dirty = new Set(dirtyFiles(root));
+    const targets = [...new Set(steps.flatMap((x) => (x.status === 'would-do' ? x.actions : []).filter((a) => !a.abs).map((a) => a.path)))];
+    const clash = targets.filter((f) => dirty.has(f));
+    if (clash.length) return { body: { ok: false, kind: 'dirty-target', files: clash, reason: `estos archivos que init va a tocar tienen cambios sin commitear: ${clash.join(', ')}. Mezclarlos con lo que escribe init haría un commit confuso` }, code: 1, alt: 'commiteá o guardá esos cambios (git commit o git stash) y volvé a correr preview' };
+  }
   if (o.verb === 'preview') return { body: { ok: true, stamp, steps: shown(steps) }, code: 0 };
-  if (stamp !== o.expect) return { body: { ok: false, kind: 'stale-preview', reason: 'el plan o el repo cambiaron desde el preview: no se escribió nada' }, code: 1, alt: 'volvé a correr preview, mostrale el resultado nuevo a la persona y repetí apply con el stamp nuevo' };
   const r = apply(root, steps);
   return { body: { ok: true, steps: shown(steps).map((s) => ({ ...s, status: s.status === 'would-do' ? 'done' : s.status })), written: r.done, notes: r.notes, nextCommit: nextCommit(root, r.done) }, code: 0 };
 }
@@ -349,7 +457,7 @@ if (require.main === module) {
   } catch (e) {
     if (e instanceof Usage) { process.stderr.write(`dev-flow init: ${e.message}\n`); process.exitCode = 2; }
     else if (e instanceof Fail) {
-      process.stdout.write(`${JSON.stringify({ ok: false, kind: e.kind, reason: e.message, ...(e.done ? { written: e.done } : {}) }, null, 2)}\n`);
+      process.stdout.write(`${JSON.stringify({ ok: false, kind: e.kind, reason: e.message, ...(e.done ? { written: e.done } : {}), ...(e.reverted ? { reverted: e.reverted } : {}) }, null, 2)}\n`);
       process.stderr.write(`dev-flow init: ${e.message}\nAlternativa: ${e.alt}\n`);
       process.exitCode = e.kind === 'partial' ? 3 : 1;
     } else {

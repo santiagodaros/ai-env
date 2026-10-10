@@ -35,6 +35,13 @@ if (wantWt) {
   if (cur.root !== wtRoot) act(`raíz de worktrees: ${wtRoot} (${cfgFile})`, () => { fs.mkdirSync(dstDir, { recursive: true }); fs.writeFileSync(cfgFile, JSON.stringify({ ...cur, root: wtRoot }, null, 2) + '\n'); });
 }
 
+// 1c) pre-commit nativo de ai-env: si ya está instalado (por /dev-flow:init), se refresca la copia fuera del plugin.
+{
+  const GH = require('../../../lib/git-hook.cjs');
+  const gd = GH.dir();
+  if (fs.existsSync(path.join(gd, 'pre-commit.cjs')) && GH.stale(gd).length) act(`actualizar el pre-commit de ai-env en ${gd}`, () => { for (const [rel, from] of GH.FILES) fs.copyFileSync(from, path.join(gd, rel)); });
+}
+
 // 2) settings.json del usuario
 let settings = {}, readable = true;
 if (fs.existsSync(settingsFile)) {

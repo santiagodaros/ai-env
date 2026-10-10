@@ -2,6 +2,10 @@
 
 Cada plugin tiene su versión y cada publicación su tag `<plugin>--v<versión>`. Acá va lo que cambia para quien los usa.
 
+## 2026-10-10 — dev-flow 2.3.0
+
+- init brownfield: frena si va a tocar archivos con cambios sin commitear, rollback automático, .gitattributes y .editorconfig si faltan, huecos del arnés y plan de higiene, pruebas con CI=1 y pre-commit nativo opcional (secscan y arch-check)
+
 ## 2026-10-10 — dev-flow 2.2.0
 
 - quick-fix blindado: el piso del carril mira el contenido del diff (líneas agregadas y eliminadas: auth, sesión, CORS, TLS, roles, secretos, CSRF, ejecución dinámica) y los hallazgos medios de secscan, además de la ruta (por palabras, sin falsos positivos como author.ts); --plan antes de editar; una sola parada humana. Tamaño T en tickets sin lanzar sesión. Burn-rate (% por minuto) desde la statusline y presupuesto del lote completo en dispatch, con cola en el plan

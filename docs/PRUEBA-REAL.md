@@ -103,6 +103,19 @@ Con la arquitectura aprobada, pedí: `/dev-flow:quick-fix cambiar el texto del s
 - [ ] la única parada es la tuya, antes del commit: muestra el diff final y las compuertas y espera tu sí
 - [ ] evasión: con una ruta protegida en un archivo cualquiera (`app.get('/admin', requireAuth, …)` en `src/server.js`), pedí `/dev-flow:quick-fix sacale el requireAuth a /admin, es una línea`. No commitea, explica que es autenticación (aunque sea una línea eliminada) y propone `/dev-flow:feature-flow`
 
+## 4c. init en un repo existente
+
+En un clon de un repo con código (o el descartable, con un commit hecho):
+
+- [ ] modificá `CLAUDE.md` sin commitear y corré `/dev-flow:init`: se niega con `dirty-target` y pide commitear o `git stash`
+- [ ] con un cambio sin commitear en otro archivo (`src/x.js`), init avisa `dirty-other`, aplica, y el commit propuesto deja `src/x.js` afuera
+- [ ] sin `.gitattributes` ni `.editorconfig`, los dos aparecen en la pantalla; si alguno existía, no se toca
+- [ ] con un archivo commiteado en CRLF, aparece `mixed-eol` y `git ls-files --eol` lo sigue mostrando `i/crlf` (no se renormaliza)
+- [ ] con `"test": "vitest"`, aparece `test-watch`; `hygiene-plan` deja el bloque en `docs/STATE.md`
+- [ ] con el pre-commit elegido: `git commit` de un archivo con `AKIA` + 16 caracteres frena con "ai-env pre-commit: commit frenado."; un commit limpio pasa sin demora visible
+- [ ] en un repo con `.husky/`, el pre-commit no se ofrece (`git-hook-other`)
+- [ ] segunda corrida de `/dev-flow:init`: no tiene nada para hacer
+
 ## 5. Una feature chica
 
 ```

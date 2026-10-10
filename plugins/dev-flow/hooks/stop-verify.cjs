@@ -32,6 +32,7 @@ run('stop-verify', (input) => {
       cwd,
       encoding: 'utf8',
       shell: true, // necesario en Windows (npm.cmd)
+      env: { ...process.env, CI: '1' }, // nada en modo watch: un hook no puede quedarse esperando
       timeout: 120000,
     });
     if (r.status !== 0) {
