@@ -31,6 +31,9 @@ function load(root) {
   const legacy = readJson(path.join(root, '.claude', 'feature-flow.json'));
   let cfg = merge(DEFAULTS, legacy ? { launch: legacy } : {});
   cfg = merge(cfg, own);
+  // Un solo archivo de estado (docs/STATE.md) para los dos modos. Compatibilidad: un repo que solo tiene
+  // docs/ESTADO.md (nombre anterior del modo Tech Lead) y no lo configura explícitamente sigue usándolo.
+  if (!own.state && !fs.existsSync(path.join(root, 'docs', 'STATE.md')) && fs.existsSync(path.join(root, 'docs', 'ESTADO.md'))) cfg.state = 'docs/ESTADO.md';
   cfg._file = fs.existsSync(path.join(root, '.claude', 'dev-flow.json')) ? '.claude/dev-flow.json' : null;
   return cfg;
 }

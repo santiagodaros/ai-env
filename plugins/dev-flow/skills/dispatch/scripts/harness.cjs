@@ -3,7 +3,7 @@
 // Uso:
 //   node harness.cjs check --pre      antes de lanzar workers (lo corre dispatch): config, PRD, rama base en verde, huérfanos
 //   node harness.cjs check --worker   lo primero que hace un worker en su worktree: si las pruebas ya fallan, no arranca
-//   node harness.cjs check --end      checkpoints del estado final: coherencia, cierre trazable, ESTADO al día, limpieza
+//   node harness.cjs check --end      checkpoints del estado final: coherencia, cierre trazable, estado (docs/STATE.md) al día, limpieza
 // Opciones: --json, --no-tests (no corre pruebas locales), --base <rama>.
 // "Se evalúa el destino, no el camino": cada checkpoint es objetivo y se puede repetir. Sale con 1 si algo FALLA.
 'use strict';

@@ -547,6 +547,26 @@ if (needAll && git.status === 0) {
   check('init: verify da OK con lo escrito', N(ip, IN, ['verify']).code === 0);
   fs.writeFileSync(path.join(ip, '.claude', 'settings.json'), '{ roto');
   check('init: verify marca FALLA con un JSON roto (exit 1)', N(ip, IN, ['verify']).code === 1);
+  // Perfiles por repo
+  check('init: sugiere el perfil frontend con react y lo explica', det.summary.found.suggestedProfile === 'frontend' && /react/.test(det.summary.found.profileReason) && det.summary.ask.some((q) => q.id === 'profile' && q.default === 'frontend'));
+  fs.writeFileSync(path.join(ip, '.claude', 'settings.json'), JSON.stringify({ enabledPlugins: { 'guard@ai-env': false } }));
+  iplan(['settings'], { profile: 'frontend', share: true });
+  const pvp = J(N(ip, IN, ['preview', '--plan', planF]));
+  check('init: el perfil apaga en el repo lo que no le corresponde y respeta una clave existente como conflicto', pvp.steps[0].status === 'would-do' && /apaga cloud-ops/.test(pvp.steps[0].actions[0].desc) && (pvp.steps[0].conflicts || []).some((c) => /guard@ai-env/.test(c)));
+  N(ip, IN, ['apply', '--plan', planF, '--expect', pvp.stamp], { AI_ENV_HOME: ihome });
+  const fset = JSON.parse(fs.readFileSync(path.join(ip, '.claude', 'settings.json'), 'utf8')).enabledPlugins;
+  check('init: settings.json queda con el perfil frontend sin pisar lo que había', fset['guard@ai-env'] === false && fset['front-studio@ai-env'] === true && fset['app-review@ai-env'] === true && fset['cloud-ops@ai-env'] === false);
+  iplan(['settings'], { profile: 'cloud', share: false });
+  const pvl = J(N(ip, IN, ['preview', '--plan', planF]));
+  const apl = J(N(ip, IN, ['apply', '--plan', planF, '--expect', pvl.stamp]));
+  const lset = JSON.parse(fs.readFileSync(path.join(ip, '.claude', 'settings.local.json'), 'utf8')).enabledPlugins;
+  check('init: sin compartir, el perfil va a settings.local.json (ignorado y fuera del commit)', lset['cloud-ops@ai-env'] === true && lset['front-studio@ai-env'] === false && spawnSync('git', ['check-ignore', '-q', '.claude/settings.local.json'], { cwd: ip }).status === 0 && apl.nextCommit === null);
+  const DOC = path.join(A, 'doctor', 'scripts', 'doctor.cjs');
+  const dr = spawnSync(process.execPath, [DOC, '--json'], { encoding: 'utf8', env: { ...process.env, AI_ENV_HOME: ihome, CLAUDE_PROJECT_DIR: ip } });
+  let drj = []; try { drj = JSON.parse(dr.stdout); } catch { /* */ }
+  check('doctor: informa el perfil activo del repo (local gana sobre el repo)', drj.some((r) => r.name === 'perfil de plugins' && /^cloud:/.test(r.detail) && /local/.test(r.detail)), JSON.stringify(drj.find((r) => r.name === 'perfil de plugins')));
+  const prof = (files) => { const d = fs.mkdtempSync(path.join(os.tmpdir(), 'kit-prof-')); spawnSync('git', ['init', '-q'], { cwd: d }); for (const [f, t] of Object.entries(files)) { fs.mkdirSync(path.dirname(path.join(d, f)), { recursive: true }); fs.writeFileSync(path.join(d, f), t); } const r = J(N(d, IN, ['detect'])); fs.rmSync(d, { recursive: true, force: true }); return r.detection ? r.detection.suggestedProfile : null; };
+  check('init: infiere cloud con .tf o .bicep, app con una API sin UI, core sin señales y full con UI + IaC', prof({ 'infra/main.bicep': 'param x string\n' }) === 'cloud' && prof({ 'azure-pipelines.yml': 'trigger: none\n', 'scripts/a.ps1': 'x' }) === 'cloud' && prof({ 'package.json': JSON.stringify({ dependencies: { express: '4' } }), 'src/a.js': 'x' }) === 'app' && prof({ 'src/lib.py': 'x = 1\n' }) === 'core' && prof({ 'package.json': JSON.stringify({ dependencies: { next: '14' } }), 'infra/main.tf': 'x' }) === 'full');
   const ib = fs.mkdtempSync(path.join(os.tmpdir(), 'kit-pi-blank-'));
   spawnSync('git', ['init', '-q'], { cwd: ib }); fs.writeFileSync(path.join(ib, 'README.md'), '# Idea\n');
   const db = J(N(ib, IN, ['detect']));
@@ -687,11 +707,40 @@ fs.rmSync(emptyProj, { recursive: true, force: true });
   let sj = {}; try { sj = JSON.parse(st.stdout); } catch { /* */ }
   check('doctor --stats: resume las decisiones por hook y regla', sj.total === 2 && (sj.rules || []).some((x) => x.rule === 'env-read' && x.count === 1));
 
-  // Latencia: cada llamada a herramienta paga el arranque de Node de sus hooks.
-  const times = [];
-  for (let i = 0; i < 5; i++) { const t0 = process.hrtime.bigint(); runNode(bgd, JSON.stringify({ tool_name: 'Bash', tool_input: { command: 'git status' } })); times.push(Number(process.hrtime.bigint() - t0) / 1e6); }
-  const med = times.sort((a, b) => a - b)[2];
-  add(med < 400 ? 'PASA' : 'AVISO', 'hooks: latencia de un guard (mediana de 5)', `${Math.round(med)} ms`);
+}
+
+// --- Latencia de los hooks, relativa al arranque de Node (no a un número absoluto, que depende de la máquina).
+// Los del camino caliente (PreToolUse y UserPromptSubmit: corren en cada llamada a herramienta o en cada mensaje)
+// tienen que sumar como mucho 30 ms sobre `node -e 0`. Los de sesión (SessionStart, Stop) corren una vez y pueden
+// lanzar git o npm: se informan, no frenan.
+{
+  const bench = fs.mkdtempSync(path.join(os.tmpdir(), 'kit-bench-'));
+  spawnSync('git', ['init', '-q'], { cwd: bench });
+  const env = { ...process.env, AI_ENV_HOME: TEST_HOME, CLAUDE_PROJECT_DIR: bench, AI_ENV_LOG: 'off' };
+  const t = (args, input) => { const t0 = process.hrtime.bigint(); spawnSync(process.execPath, args, { input, encoding: 'utf8', cwd: bench, env }); return Number(process.hrtime.bigint() - t0) / 1e6; };
+  const med = (a) => [...a].sort((x, y) => x - y)[Math.floor(a.length / 2)];
+  const H = (plugin, f) => path.join(P, plugin, 'hooks', f);
+  const edit = { tool_name: 'Edit', cwd: bench, tool_input: { file_path: path.join(bench, 'src', 'a.ts'), old_string: 'a', new_string: 'b' } };
+  const bash = { tool_name: 'Bash', cwd: bench, tool_input: { command: 'git status' } };
+  const HOT = [
+    ['guard/protect-files', H('guard', 'protect-files.cjs'), edit], ['guard/secret-read', H('guard', 'secret-read.cjs'), { tool_name: 'Read', cwd: bench, tool_input: { file_path: path.join(bench, 'README.md') } }],
+    ['guard/bash-guard', H('guard', 'bash-guard.cjs'), bash], ['arch/arch-guard', H('arch', 'arch-guard.cjs'), edit],
+    ['dev-flow/session-guard', H('dev-flow', 'session-guard.cjs'), bash], ['dev-flow/lead-guard', H('dev-flow', 'lead-guard.cjs'), edit],
+    ['dev-flow/lead-notify', H('dev-flow', 'lead-notify.cjs'), { cwd: bench, prompt: 'hola' }],
+  ];
+  const SESSION = [['dev-flow/rehydrate', H('dev-flow', 'rehydrate.cjs'), { cwd: bench, source: 'startup' }], ['arch/arch-start', H('arch', 'arch-start.cjs'), { cwd: bench, source: 'startup' }]];
+  const all = [...HOT, ...SESSION];
+  const floor = [], times = all.map(() => []);
+  for (let round = 0; round < 9; round++) {
+    floor.push(t(['-e', '0'], ''));
+    all.forEach(([, f, input], i) => times[i].push(t([f], JSON.stringify(input))));
+  }
+  const base = med(floor);
+  const deltas = all.map(([name], i) => [name, Math.round(med(times[i]) - base)]);
+  for (const [name, d] of deltas.slice(0, HOT.length)) check(`hooks: ${name} suma ≤ 30 ms sobre node -e 0 (mediana de 9)`, d <= 30, `Δt ${d} ms (node -e 0: ${Math.round(base)} ms)`);
+  const slow = deltas.slice(HOT.length).filter(([, d]) => d > 30);
+  add(slow.length ? 'AVISO' : 'PASA', 'hooks de sesión (corren una vez; no frenan): Δt sobre node -e 0', deltas.slice(HOT.length).map(([n, d]) => `${n} ${d} ms`).join(', '));
+  fs.rmSync(bench, { recursive: true, force: true });
 }
 
 // --- bash-guard: infraestructura como código
@@ -926,8 +975,11 @@ process.exit(0);`);
   const sh = fs.existsSync(path.join(root, 'install.sh')) ? fs.readFileSync(path.join(root, 'install.sh'), 'utf8') : '';
   check('instalador: install.sh no tiene finales de línea de Windows', sh.length > 0 && !sh.includes('\r'));
   const names = fs.readdirSync(P).filter((d) => fs.existsSync(path.join(P, d, '.claude-plugin', 'plugin.json')));
-  check('instalador: ambos instalan por defecto todos los plugins que existen', names.every((n) => sh.includes(n) && ps.toString().includes(`'${n}'`)));
+  check('instalador: ambos conocen todos los plugins que existen', names.every((n) => sh.includes(n) && ps.toString().includes(n)));
 }
+
+// --- Perfiles de plugins (shared/profiles.json, instaladores)
+require('./profiles.cjs')({ check, add });
 
 // --- dev-flow: forma de trabajo Tech Lead + workers
 require('./tech-lead.cjs')({

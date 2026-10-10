@@ -22,7 +22,9 @@ Si preferís leerlo antes de ejecutarlo, que es lo razonable con cualquier insta
 
 | Variable | Efecto |
 |---|---|
-| `AI_ENV_PLUGINS="guard dev-flow"` | Instala solo esos plugins (por defecto, los seis) |
+| `AI_ENV_PROFILE=core` | Instala solo los plugins de un perfil: `core`, `app`, `cloud`, `frontend` o `full` (por defecto, `full`). En PowerShell, con el script descargado, también `-PluginProfile cloud` |
+| `AI_ENV_PLUGINS="guard dev-flow"` | Instala exactamente esos plugins; si está definida, gana sobre el perfil |
+| `AI_ENV_DRY_RUN=1` | Muestra qué plugins instalaría y sale, sin tocar nada |
 | `AI_ENV_NO_SETUP=1` | No toca `settings.json`: sin statusline ni actualización automática |
 | `AI_ENV_FORCE_STATUSLINE=1` | Reemplaza la statusline que ya tengas |
 | `AI_ENV_SOURCE=usuario/repo` | Instala desde un fork o una carpeta local |
@@ -41,7 +43,7 @@ Si instalaste a mano, una vez por máquina dentro de Claude Code:
 /dev-flow:doctor    # diagnóstico: qué está activo y qué falta
 ```
 
-Y una vez por repo: `/dev-flow:init`. Detecta el stack, te muestra en una pantalla qué va a escribir y aplica solo con tu sí, contra esa misma vista previa. Si el repo lo usa más gente, deja el marketplace y los plugins declarados en `.claude/settings.json`, así cargan solos para quien lo clone y confíe en la carpeta.
+Y una vez por repo: `/dev-flow:init`. Detecta el stack, te muestra en una pantalla qué va a escribir y aplica solo con tu sí, contra esa misma vista previa. También fija el **perfil de plugins** del repo (abajo): activa los del perfil y apaga los demás solo ahí, en `.claude/settings.json` si el repo lo usa más gente (cargan solos para quien lo clone y confíe en la carpeta) o en `.claude/settings.local.json` si es solo tuyo.
 
 **Versiones y actualizaciones.** Cada plugin tiene su versión (`x.y.z`) y cada publicación su tag `<plugin>--v<versión>`. Recibís una actualización cuando sube la versión, nunca por un commit a medio hacer. Claude Code trae la actualización automática apagada para marketplaces de terceros; el instalador (o `/dev-flow:setup`) la enciende. A mano: `claude plugin marketplace update ai-env` y `claude plugin update <plugin>@ai-env`. Qué cambió en cada versión: [`CHANGELOG.md`](CHANGELOG.md).
 
@@ -56,7 +58,21 @@ Y una vez por repo: `/dev-flow:init`. Detecta el stack, te muestra en una pantal
 | [`cloud-ops`](plugins/cloud-ops/README.md) | 6 skills de Azure, verificación de Terraform, Bicep y PowerShell, y el servidor MCP de Microsoft Learn | ~890 tokens |
 | [`front-studio`](plugins/front-studio/README.md) | 12 skills de crítica y rediseño de UI (kit por página, opciones, accesibilidad, performance, look de IA, plan de trabajo) y re-auditoría de seguridad | ~890 tokens |
 
-Cada plugin tiene su propio README con el detalle de skills, hooks, configuración y límites. Los costos son la estimación de `claude plugin details <plugin>@ai-env`; los hooks no consumen contexto. Las skills se invocan con el prefijo del plugin (`/dev-flow:feature-run`).
+Cada plugin tiene su propio README con el detalle de skills, hooks, configuración y límites. Los costos de esta tabla son la estimación de `claude plugin details <plugin>@ai-env`, que también cuenta las skills manuales; lo que de verdad entra al contexto es menos (siguiente tabla). Los hooks no consumen contexto. Las skills se invocan con el prefijo del plugin (`/dev-flow:feature-run`).
+
+### Perfiles
+
+Instalás los seis una vez y cada repo activa solo los de su dominio. Así hay menos skills que Claude pueda disparar fuera de lugar (las 6 automáticas de `cloud-ops` no tienen nada que hacer en un repo de React) y un poco menos de contexto. La tabla vive en [`shared/profiles.json`](shared/profiles.json); `/dev-flow:init` sugiere el perfil según el stack y `/dev-flow:doctor` muestra cuál está activo.
+
+| Perfil | Plugins | Para | Contexto medido | Skills automáticas |
+|---|---|---|---|---|
+| `core` | guard, arch, dev-flow | Backend, librerías, lógica de negocio | +520 tokens | 1 |
+| `app` | core + app-review | APIs y backends con autenticación o APIs de Microsoft | +1.160 tokens | 4 |
+| `cloud` | core + cloud-ops | Terraform, Bicep, gobernanza de Azure | +1.410 tokens | 7 |
+| `frontend` | core + app-review + front-studio | UI, React, accesibilidad | +1.280 tokens | 5 |
+| `full` | los seis | Todo (por defecto) | +2.170 tokens | 11 |
+
+"Contexto medido" es lo que agrega cada perfil a una sesión sin plugins (~38.800 tokens de base), medido con `claude -p --plugin-dir …` y el uso de tokens que informa la CLI (dev-flow 2.1.0, octubre de 2026). Las skills manuales (27 de 38) no cargan su descripción: por eso el ahorro real de `core` frente a `full` es de ~1.650 tokens (4 % del contexto base), no de miles. El beneficio principal es la precisión: menos herramientas candidatas para cada pedido.
 
 ## Cómo se usa, en una página
 

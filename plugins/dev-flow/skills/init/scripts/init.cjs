@@ -5,7 +5,7 @@
 //   apply --plan <archivo> --expect <stamp>
 //                                   escribe solo los pasos aprobados; se niega (stale-preview) si el plan o el repo cambiaron
 //   verify                          revisa que lo escrito quedó válido (JSON que parsea, .private-terms ignorado, bloques)
-// Plan: {"v":1,"approved":["gitignore","claude-md",...],"answers":{"mode":"features|tech-lead","privateTerms":["..."]}}
+// Plan: {"v":1,"approved":["gitignore","claude-md",...],"answers":{"mode":"features|tech-lead","profile":"core|app|cloud|frontend|full","share":true,"privateTerms":["..."]}}
 // JSON por stdout. Exit 0 ok · 1 fallo con `kind` ("Alternativa:" en stderr) · 2 uso incorrecto · 3 quedó a medias.
 // Nunca pisa texto existente (agrega o crea), respalda lo que modifica fuera del repo, nunca commitea ni hace push.
 'use strict';
@@ -19,7 +19,8 @@ const { detect: detectStack } = require('./detect.cjs');
 const STEP_IDS = ['gitignore', 'private-terms', 'claude-md', 'state', 'tech-lead', 'settings', 'ci'];
 const T = path.join(__dirname, '..', 'templates');
 const GITIGNORE = ['.claude/.feature-flow/', '.claude/worktrees/', '.dev-flow/', '.claude/settings.local.json', 'CLAUDE.local.md', '.private-terms', 'tfplan', '*.tfplan', 'plan.json', 'whatif.json'];
-const PLUGINS = ['guard@ai-env', 'arch@ai-env', 'dev-flow@ai-env'];
+const PROFILES = require('../../../lib/profiles.json'); // copia de shared/profiles.json
+const MK = PROFILES.marketplace;
 const sha = (s) => crypto.createHash('sha256').update(s).digest('hex');
 
 class Usage extends Error {}
@@ -56,7 +57,9 @@ function readPlan(file) {
   const answers = p.answers || {};
   if (answers.mode !== undefined && !['features', 'tech-lead'].includes(answers.mode)) throw new Usage('answers.mode es "features" o "tech-lead"');
   if (answers.privateTerms !== undefined && (!Array.isArray(answers.privateTerms) || answers.privateTerms.some((t) => typeof t !== 'string'))) throw new Usage('answers.privateTerms es una lista de textos');
-  return { approved: STEP_IDS.filter((s) => p.approved.includes(s)), answers: { mode: answers.mode || 'features', privateTerms: (answers.privateTerms || []).map((t) => t.trim()).filter(Boolean) } };
+  if (answers.profile !== undefined && !PROFILES.order.includes(answers.profile)) throw new Usage(`answers.profile es uno de: ${PROFILES.order.join(', ')}`);
+  if (answers.share !== undefined && typeof answers.share !== 'boolean') throw new Usage('answers.share es true o false');
+  return { approved: STEP_IDS.filter((s) => p.approved.includes(s)), answers: { mode: answers.mode || 'features', profile: answers.profile || null, share: answers.share !== false, privateTerms: (answers.privateTerms || []).map((t) => t.trim()).filter(Boolean) } };
 }
 
 // Sistema de archivos simulado: cada paso planea contra el estado que dejan los anteriores, así preview y apply coinciden.
@@ -81,10 +84,13 @@ function commandsBlock(det) {
     '<!-- commands:end -->', ''].join('\n');
 }
 
+const STATE_TEMPLATE = '# STATE\n\nEstado vivo del proyecto. El hook rehydrate lo reinyecta tras /compact.\n\n## Decisiones\n- \n\n## Hecho\n- \n\n## Pendiente\n- \n';
+const STATE_GENERATED = '\n## Estado generado desde GitHub\n\n<!-- estado:start -->\n(correr estado.cjs --write)\n<!-- estado:end -->\n';
+
 const AGENTS_BLOCK = ['<!-- agents:start -->', '## Forma de trabajo: Tech Lead y workers', '',
   '@AGENTS.md', '',
   '- Esta sesión es el **Tech Lead**: analiza, parte en tickets (`/dev-flow:prd`, `/dev-flow:ticket`), lanza workers (`/dev-flow:dispatch`) y audita. No edita código de aplicación (el hook `lead-guard` lo impide en el checkout principal).',
-  '- Estado en GitHub (issues, PRs con `Closes #N`, checks) y en `docs/ESTADO.md`; el hilo de cada ticket, en `.dev-flow/tickets/<N>/` y, al cerrarlo, en `docs/tickets/<N>.md`.',
+  '- Estado en GitHub (issues, PRs con `Closes #N`, checks) y en `docs/STATE.md` (bloque generado con `estado.cjs --write`); el hilo de cada ticket, en `.dev-flow/tickets/<N>/` y, al cerrarlo, en `docs/tickets/<N>.md`.',
   '- Merge: lo decide una persona, con veredicto `aprobar` y checks verdes.',
   '<!-- agents:end -->', ''].join('\n');
 
@@ -121,17 +127,21 @@ const STEPS = {
     return { status: 'would-do', actions: [{ path: 'CLAUDE.md', op: cur === null ? 'create' : 'append', desc: cur === null ? 'crear CLAUDE.md con los comandos reales del repo' : 'agregar al final de CLAUDE.md el bloque de comandos reales (tu texto queda igual)', content: cur === null ? `# ${path.basename(ctx.root)}\n\n${block}` : appendText(cur, block).slice(cur.length) }] };
   },
   state(ctx) {
-    if (ctx.answers.mode === 'tech-lead') return { status: 'nothing', reason: 'en modo Tech Lead el estado vive en docs/ESTADO.md (paso tech-lead)' };
-    if (ctx.fs.read('docs/STATE.md') !== null || ctx.fs.read('docs/ESTADO.md') !== null) return { status: 'nothing', reason: 'ya hay un archivo de estado' };
-    return { status: 'would-do', actions: [{ path: 'docs/STATE.md', op: 'create', desc: 'crear docs/STATE.md (el hook rehydrate lo reinyecta tras /compact)', content: '# STATE\n\nEstado vivo del proyecto. El hook rehydrate lo reinyecta tras /compact.\n\n## Decisiones\n- \n\n## Hecho\n- \n\n## Pendiente\n- \n' }] };
+    // Un solo archivo de estado para los dos modos: docs/STATE.md. En modo Tech Lead lleva además el bloque que
+    // estado.cjs --write genera desde GitHub. Un repo que ya usa docs/ESTADO.md (nombre anterior) se respeta.
+    const tl = ctx.answers.mode === 'tech-lead';
+    const cur = ctx.fs.read('docs/STATE.md');
+    if (cur === null && ctx.fs.read('docs/ESTADO.md') !== null) return { status: 'nothing', reason: 'el repo usa docs/ESTADO.md (nombre anterior): se sigue leyendo y escribiendo ahí; para unificar, git mv docs/ESTADO.md docs/STATE.md' };
+    if (cur === null) return { status: 'would-do', actions: [{ path: 'docs/STATE.md', op: 'create', desc: `crear docs/STATE.md (el hook rehydrate lo reinyecta tras /compact${tl ? '; con el bloque que estado.cjs completa desde GitHub' : ''})`, content: STATE_TEMPLATE + (tl ? STATE_GENERATED : '') }] };
+    if (tl && !cur.includes('<!-- estado:start -->')) return { status: 'would-do', actions: [{ path: 'docs/STATE.md', op: 'append', desc: 'agregar a docs/STATE.md el bloque que estado.cjs completa desde GitHub (lo tuyo queda igual)', content: (cur.endsWith('\n') ? '' : '\n') + STATE_GENERATED }] };
+    return { status: 'nothing', reason: 'docs/STATE.md ya está' };
   },
   'tech-lead'(ctx) {
     if (ctx.answers.mode !== 'tech-lead') return { status: 'refused', reason: 'el paso tech-lead necesita answers.mode = "tech-lead"' };
     const A = [];
     const create = (f, desc, content) => { if (ctx.fs.read(f) === null) A.push({ path: f, op: 'create', desc, content }); };
-    create('.claude/dev-flow.json', 'configuración del repo: PRD, ESTADO, lead-guard activo, worktrees en ~/worktrees, topes para workers', JSON.stringify({ prd: 'docs/PRD.md', state: 'docs/ESTADO.md', lead: { enforce: true }, worktrees: { root: '~/worktrees' }, launch: { maxConcurrent: 3, maxPerDay: 12, cooldownMinutes: 2 }, workers: { mode: 'headless', permissionMode: 'auto', maxTurns: 80 } }, null, 2) + '\n');
+    create('.claude/dev-flow.json', 'configuración del repo: PRD, lead-guard activo, worktrees en ~/worktrees, topes para workers', JSON.stringify({ prd: 'docs/PRD.md', lead: { enforce: true }, worktrees: { root: '~/worktrees' }, launch: { maxConcurrent: 3, maxPerDay: 12, cooldownMinutes: 2 }, workers: { mode: 'headless', permissionMode: 'auto', maxTurns: 80 } }, null, 2) + '\n');
     create('docs/PRD.md', 'PRD con el esqueleto de ids (G-01, G-02, NF-01, F-01)', require('../../prd/scripts/prd.cjs').SKELETON);
-    create('docs/ESTADO.md', 'estado del proyecto (estado.cjs --write lo completa desde GitHub)', '# Estado\n\n## Decisiones\n- \n\n## Estado generado\n\n<!-- estado:start -->\n(correr estado.cjs --write)\n<!-- estado:end -->\n');
     create('docs/CHANGELOG.md', 'historial de cambios', '# Historial de cambios\n\n## Sin publicar\n');
     for (const r of ['implementer', 'auditor', 'sre', 'docs']) create(`.claude/prompts/${r}.md`, `reglas del proyecto para el rol ${r} (vacías)`, `# Reglas del proyecto para el rol ${r}\n\nSe suman a las del plugin dev-flow (no las reemplazan). Solo lo propio de este repo: convenciones, carpetas prohibidas, comandos especiales.\n\n- \n`);
     for (const f of ['AGENTS.md', 'docs/conventions.md', 'docs/verification.md']) create(f, f === 'AGENTS.md' ? 'mapa del repo para agentes (CLAUDE.md lo importa)' : `plantilla de ${path.basename(f, '.md') === 'conventions' ? 'convenciones' : 'verificación'} que el auditor chequea`, fs.readFileSync(path.join(T, 'agents', f), 'utf8'));
@@ -141,18 +151,35 @@ const STEPS = {
     return A.length ? { status: 'would-do', actions: A } : { status: 'nothing', reason: 'el repo ya tiene la forma de trabajo Tech Lead' };
   },
   settings(ctx) {
-    const f = '.claude/settings.json';
+    // Perfil por repo: activa los plugins del perfil y apaga los demás solo en este repo. Compartido →
+    // .claude/settings.json (versionado); si no → .claude/settings.local.json (ignorado). Una clave que ya existe
+    // no se toca: se informa como conflicto. Sin perfil (planes viejos): activa core y no apaga nada.
+    const f = ctx.answers.share ? '.claude/settings.json' : '.claude/settings.local.json';
+    if (!ctx.answers.share) {
+      const gi = (ctx.fs.read('.gitignore') || '').split(/\r?\n/);
+      if (!gi.includes('.claude/settings.local.json') && !ignoredByGit(ctx.root, f)) return { status: 'refused', reason: '.claude/settings.local.json no está ignorado por git: aprobá también el paso gitignore' };
+    }
     const raw = ctx.fs.read(f);
     let cur = {};
-    if (raw !== null) { try { cur = JSON.parse(raw); } catch { return { status: 'refused', reason: '.claude/settings.json no es JSON válido: no se toca' }; } }
+    if (raw !== null) { try { cur = JSON.parse(raw); } catch { return { status: 'refused', reason: `${f} no es JSON válido: no se toca` }; } }
     const next = JSON.parse(JSON.stringify(cur));
     next.extraKnownMarketplaces = next.extraKnownMarketplaces || {};
-    if (!next.extraKnownMarketplaces['ai-env']) next.extraKnownMarketplaces['ai-env'] = { source: { source: 'github', repo: 'santiagodaros/ai-env' }, autoUpdate: true };
+    if (!next.extraKnownMarketplaces[MK]) next.extraKnownMarketplaces[MK] = { source: { source: 'github', repo: 'santiagodaros/ai-env' }, autoUpdate: true };
     next.enabledPlugins = next.enabledPlugins || {};
-    const added = PLUGINS.filter((p) => !(p in next.enabledPlugins));
-    for (const p of added) next.enabledPlugins[p] = true;
-    if (JSON.stringify(next) === JSON.stringify(cur)) return { status: 'nothing', reason: 'el marketplace y los plugins ya están declarados (un plugin en false se respeta)' };
-    return { status: 'would-do', actions: [{ path: f, op: raw === null ? 'create' : 'merge', desc: `declarar el marketplace ai-env${added.length ? ` y activar ${added.join(', ')}` : ''} para todo el que clone el repo (lo que había se conserva)`, content: JSON.stringify(next, null, 2) + '\n' }] };
+    const prof = ctx.answers.profile;
+    const want = prof ? PROFILES.profiles[prof].plugins : PROFILES.profiles.core.plugins;
+    const on = [], off = [], conflicts = [];
+    for (const p of PROFILES.profiles.full.plugins) {
+      const key = `${p}@${MK}`;
+      const desired = want.includes(p) ? true : prof ? false : undefined;
+      if (desired === undefined) continue;
+      if (key in next.enabledPlugins) { if (next.enabledPlugins[key] !== desired) conflicts.push(`${key} ya está en ${next.enabledPlugins[key]} en ${f}: se respeta`); continue; }
+      next.enabledPlugins[key] = desired;
+      (desired ? on : off).push(p);
+    }
+    if (JSON.stringify(next) === JSON.stringify(cur)) return { status: 'nothing', reason: `${f} ya refleja ${prof ? `el perfil ${prof}` : 'los plugins base'}`, ...(conflicts.length ? { conflicts } : {}) };
+    const what = [on.length ? `activa ${on.join(', ')}` : '', off.length ? `apaga ${off.join(', ')} en este repo` : ''].filter(Boolean).join('; ');
+    return { status: 'would-do', ...(conflicts.length ? { conflicts } : {}), actions: [{ path: f, op: raw === null ? 'create' : 'merge', desc: `${prof ? `perfil ${prof}` : 'plugins base'}${what ? `: ${what}` : ''} (${ctx.answers.share ? 'para todo el que clone el repo' : 'solo en tu máquina'}; lo que había se conserva)`, content: JSON.stringify(next, null, 2) + '\n' }] };
   },
   ci(ctx) {
     const A = [];
@@ -184,7 +211,7 @@ function stampOf(root, plan, steps) {
 }
 
 // Lo que se muestra: nunca el contenido de .private-terms (solo cuántos términos).
-const shown = (steps) => steps.map((s) => ({ id: s.id, status: s.status, ...(s.reason ? { reason: s.reason } : {}), ...(s.actions ? { actions: s.actions.map((a) => ({ path: a.path, op: a.op, desc: a.desc })) } : {}) }));
+const shown = (steps) => steps.map((s) => ({ id: s.id, status: s.status, ...(s.reason ? { reason: s.reason } : {}), ...(s.conflicts ? { conflicts: s.conflicts } : {}), ...(s.actions ? { actions: s.actions.map((a) => ({ path: a.path, op: a.op, desc: a.desc })) } : {}) }));
 
 function backupDir(root) {
   const home = process.env.AI_ENV_HOME || os.homedir();
@@ -228,7 +255,8 @@ function summaryOf(root, det) {
     privateTerms: fs.existsSync(path.join(root, '.private-terms')),
     settings: (() => { const f = path.join(root, '.claude', 'settings.json'); if (!fs.existsSync(f)) return null; try { JSON.parse(fs.readFileSync(f, 'utf8')); return 'ok'; } catch { return 'invalid'; } })(),
   };
-  const would = (mode, ids) => runSteps(root, { approved: ids, answers: { mode, privateTerms: [] } }, det).filter((s) => s.status === 'would-do').map((s) => s.id);
+  const shared = det.remote !== null;
+  const would = (mode, ids) => runSteps(root, { approved: ids, answers: { mode, profile: det.suggestedProfile, share: shared, privateTerms: [] } }, det).filter((s) => s.status === 'would-do').map((s) => s.id);
   const attention = [];
   if (!det.blank) {
     if (det.packageManager === null && det.languages.length) attention.push('unrecognized-runner');
@@ -241,22 +269,23 @@ function summaryOf(root, det) {
   if (det.remote !== 'github') attention.push('no-github-remote');
   if (existing.claudeMd) attention.push('existing-claude-md');
   if (existing.devflowJson) attention.push('existing-dev-flow');
-  const shared = det.remote !== null;
+  if (!fs.existsSync(path.join(root, 'docs', 'STATE.md')) && fs.existsSync(path.join(root, 'docs', 'ESTADO.md'))) attention.push('legacy-estado');
   return {
     existing,
     summary: {
       mode: det.blank ? 'blank' : 'existing',
-      found: { languages: det.languages, frameworks: det.frameworks, packageManager: det.packageManager, scripts: det.scripts, suggestedType: det.suggestedType, remote: det.remote, projectPlugins: det.projectPlugins },
+      found: { languages: det.languages, frameworks: det.frameworks, packageManager: det.packageManager, scripts: det.scripts, suggestedType: det.suggestedType, remote: det.remote, projectPlugins: det.projectPlugins, suggestedProfile: det.suggestedProfile, profileReason: det.profileReason },
       ask: det.blank
         ? [{ id: 'create-base', kind: 'yes-no', default: true }]
         : [
           { id: 'mode', kind: 'choice', options: ['features', 'tech-lead'], default: existing.devflowJson ? 'tech-lead' : 'features' },
-          { id: 'share', kind: 'yes-no', default: shared, maps: 'settings' },
+          { id: 'profile', kind: 'choice', options: PROFILES.order, default: det.suggestedProfile, reason: det.profileReason, plugins: Object.fromEntries(PROFILES.order.map((n) => [n, PROFILES.profiles[n].plugins])) },
+          { id: 'share', kind: 'yes-no', default: shared, target: { true: '.claude/settings.json', false: '.claude/settings.local.json' } },
           { id: 'privateTerms', kind: 'free-text', default: [], maps: 'private-terms' },
         ],
       recommended: det.blank
         ? { features: would('features', ['gitignore', 'claude-md', 'state']) }
-        : { features: would('features', ['gitignore', 'claude-md', 'state']), 'tech-lead': would('tech-lead', ['gitignore', 'claude-md', 'tech-lead']) },
+        : { features: would('features', ['gitignore', 'claude-md', 'state', 'settings']), 'tech-lead': would('tech-lead', ['gitignore', 'claude-md', 'state', 'tech-lead', 'settings']) },
       optional: det.blank ? [] : ['ci'],
       attention,
       next: det.blank || !det.hasArchitecture ? 'arch:arch-first' : null,
@@ -272,7 +301,8 @@ function verify(root) {
   const miss = GITIGNORE.filter((w) => !gi.includes(w));
   add(miss.length ? 'AVISO' : 'OK', '.gitignore cubre el estado local', miss.join(', '));
   if (read('.private-terms') !== null) add(ignoredByGit(root, '.private-terms') ? 'OK' : 'FALLA', '.private-terms ignorado por git', ignoredByGit(root, '.private-terms') ? '' : 'se subiría al repo con los nombres que protege');
-  for (const f of ['.claude/settings.json', '.claude/dev-flow.json']) {
+  if (read('.claude/settings.local.json') !== null) add(ignoredByGit(root, '.claude/settings.local.json') ? 'OK' : 'AVISO', '.claude/settings.local.json ignorado por git', ignoredByGit(root, '.claude/settings.local.json') ? '' : 'tu perfil local se subiría al repo');
+  for (const f of ['.claude/settings.json', '.claude/settings.local.json', '.claude/dev-flow.json']) {
     const t = read(f);
     if (t === null) continue;
     try { JSON.parse(t); add('OK', `${f} es JSON válido`); } catch (e) { add('FALLA', `${f} es JSON válido`, e.message); }

@@ -43,6 +43,20 @@ function detect(dir) {
   const projectPlugins = (() => { try { return Object.entries(JSON.parse(read('.claude/settings.json')).enabledPlugins || {}).filter(([, v]) => v).map(([k]) => k); } catch { return []; } })();
   const remote = spawnSync('git', ['remote', 'get-url', 'origin'], { cwd: dir, encoding: 'utf8' });
   const remoteUrl = remote.status === 0 ? remote.stdout.trim() : '';
+  // Perfil sugerido (shared/profiles.json): UI → frontend; IaC → cloud; API sin UI → app; si no, core. UI + IaC → full.
+  const csproj = files.filter((f) => f.endsWith('.csproj')).map(read).join('\n');
+  const signals = {
+    frontend: ['react', 'next', 'vite', 'vue'].filter((k) => deps[k]),
+    cloud: files.filter((f) => /\.(tf|bicep)$/.test(f) || /(^|\/)azure-pipelines[^/]*\.ya?ml$/.test(f)).slice(0, 3),
+    app: [...(api ? frameworks.filter((k) => ['express', 'fastify', 'koa', '@nestjs/core', 'fastapi', 'flask', 'django'].includes(k)) : []),
+      ...(/Microsoft\.NET\.Sdk\.Web|Microsoft\.AspNetCore/.test(csproj) ? ['ASP.NET'] : []), ...(has('host.json') ? ['Azure Functions'] : []),
+      ...(files.some((f) => /(^|\/)(controllers?|routes|endpoints)\//i.test(f)) ? ['controladores o rutas'] : [])],
+  };
+  const [suggestedProfile, profileReason] = signals.frontend.length && signals.cloud.length ? ['full', `UI (${signals.frontend.join(', ')}) e infraestructura (${signals.cloud.join(', ')}) en el mismo repo`]
+    : signals.frontend.length ? ['frontend', `dependencias de UI: ${signals.frontend.join(', ')}`]
+      : signals.cloud.length ? ['cloud', `infraestructura como código: ${signals.cloud.join(', ')}`]
+        : signals.app.length ? ['app', `API o backend sin UI: ${signals.app.join(', ')}`]
+          : ['core', 'sin señales de UI, infraestructura ni API'];
   const code = files.filter((f) => !DOC_ONLY.test(path.basename(f)) && !f.startsWith('.github/') && f !== '.gitignore' && f !== '.gitattributes');
   return {
     dir, languages: lang, frameworks, packageManager: pm, scripts, suggestedType: suggested,
@@ -52,6 +66,7 @@ function detect(dir) {
     testPlaceholder: !!(pkg.scripts && /no test specified|^\s*(exit 0|true|:|echo\b[^&|]*)\s*$/i.test(pkg.scripts.test || '')),
     remote: remoteUrl ? (/github\.com[:/]/i.test(remoteUrl) ? 'github' : 'otro') : null,
     blank: code.length === 0,
+    suggestedProfile, profileReason,
   };
 }
 

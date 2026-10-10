@@ -21,13 +21,26 @@ Requiere el plugin [`arch`](../arch/README.md), que se instala solo como depende
 
 No hace falta recordar la etapa: al abrir una sesión en la rama o worktree de una feature, el hook `rehydrate` inyecta el contexto, dice en qué etapa está y cuál es el paso siguiente.
 
+### Una feature: la macro o las primitivas
+
+`feature-run` es una comodidad que encadena primitivas; cada una sirve sola, y la cadena es un camino tan válido como la macro. Conviene cuando querés control paso a paso, cortar en el medio o implementar con un worker.
+
+| Paso | Primitiva | Deja |
+|---|---|---|
+| 1. Definir | `/dev-flow:spec-interview` | `docs/features/<slug>/SPEC.md` y su `STATE.md` |
+| 2. Implementar | En la rama `feature/<slug>` de esta sesión, en una sesión nueva (`/dev-flow:feature-flow` agrega `HANDOFF.md` y da el comando `claude -w <slug>`) o con un worker (`/dev-flow:dispatch`) | Commits con pruebas |
+| 3. Cerrar | `/dev-flow:feature-close <slug>` | Verificación, `docs/CHANGELOG.md`, `docs/design/<slug>.md` y `PR.md` |
+| 4. PR | `/dev-flow:pr-prep` | Push y PR, solo con tu sí |
+
+El estado del proyecto vive en un solo archivo, `docs/STATE.md`, en los dos modos (con Tech Lead, además, el bloque que `estado.cjs` genera desde GitHub). Lo de cada feature (`SPEC.md`, `STATE.md`, `HANDOFF.md`) y de cada ticket (expediente y `progress.md`) es lo que permite retomar: no se fusiona.
+
 ## Skills
 
-Todas las skills son manuales. Orden típico: `init` → `arch:arch-first` → `feature-flow` o `feature-run` → `feature-close` → `pr-prep`. Para un arreglo puntual, `quick-fix`.
+Todas las skills son manuales salvo `audit`. Orden típico: `init` → `arch:arch-first` → una feature (abajo) → `feature-close` → `pr-prep`. Para un arreglo puntual, `quick-fix`.
 
 | Skill | Activación | Qué hace |
 |---|---|---|
-| `init` | manual | Repo nuevo o clonado, con la forma del init de Pignolo: `detect` (solo lee), una pantalla con lo encontrado, lo que va a escribir y lo que falta; `preview` con un sello y `apply --expect <sello>`, que se niega si el plan o el repo cambiaron; `verify`; commit propuesto en `chore/dev-flow-init`. Pasos: `.gitignore`, `CLAUDE.md` con los scripts reales, `docs/STATE.md` o el modo Tech Lead, `.private-terms` local, plugins declarados para el equipo y CI opcional. Nunca pisa nada; respalda lo que modifica. Encadena `arch-first` |
+| `init` | manual | Repo nuevo o clonado, con la forma del init de Pignolo (pregunta modo, perfil de plugins del repo y si se comparte): `detect` (solo lee), una pantalla con lo encontrado, lo que va a escribir y lo que falta; `preview` con un sello y `apply --expect <sello>`, que se niega si el plan o el repo cambiaron; `verify`; commit propuesto en `chore/dev-flow-init`. Pasos: `.gitignore`, `CLAUDE.md` con los scripts reales, `docs/STATE.md` o el modo Tech Lead, `.private-terms` local, perfil de plugins (en `.claude/settings.json` o `.claude/settings.local.json`) y CI opcional. Nunca pisa nada; respalda lo que modifica. Encadena `arch-first` |
 | `feature-flow` | manual | Parte un trabajo grande en hasta 3 features, crea `docs/features/<slug>/` con `SPEC.md`, `STATE.md` y `HANDOFF.md`, y te da el comando para retomarla en una sesión nueva. Abrir sesiones en segundo plano es opcional y tiene límites duros (ver abajo) |
 | `feature-run` | manual | Orquesta una feature de punta a punta: presupuesto, SPEC aprobado, implementación, pruebas, cierre con documentos y `PR.md`. `stage.cjs` dice en qué etapa está mirando archivos y git, así que se puede reanudar. Paradas: SPEC sin aprobar, sin presupuesto, tests rojos tras 2 intentos, push o PR sin tu sí |
 | `spec-interview` | manual | Te entrevista para definir una feature grande y escribe un `SPEC.md` autocontenido antes de implementar |
@@ -84,7 +97,7 @@ La sesión principal orquesta y no escribe código de aplicación. El ciclo, con
 
 Los roles son también subagentes del plugin (`dev-flow:implementer`, `auditor`, `sre`, `docs`, `explorer`) para delegar algo chico sin abrir sesiones; los explorers se lanzan varios en paralelo y devuelven solo la ruta de sus hallazgos. Reglas del proyecto por rol en `.claude/prompts/<rol>.md` (se suman). Verificado de punta a punta con Claude Code 2.1.296 en Linux (implementador → tarjeta → PR → auditor, US$ 0,99 en total para un ticket chico).
 
-Configuración del repo en `.claude/dev-flow.json` (la crea `/dev-flow:init` en modo Tech Lead): `prd`, `state` (p. ej. `docs/ESTADO.md`), `worktrees.root` (p. ej. `~/worktrees`), `launch` (topes), `workers` (`mode`, `permissionMode` —por defecto `auto`: el clasificador aprueba lo seguro y los hooks de `guard` siguen frenando lo peligroso; con `acceptEdits` los comandos compuestos se deniegan—, `allowedTools`, `maxTurns`), `testCommand`, `labels`. Lo que generan las corridas va a `.dev-flow/` (ignorado por git; fuera de `.claude/`, que Claude Code protege de escrituras).
+Configuración del repo en `.claude/dev-flow.json` (la crea `/dev-flow:init` en modo Tech Lead): `prd`, `state` (por defecto `docs/STATE.md`, el mismo para los dos modos; un repo que solo tiene `docs/ESTADO.md` sigue usándolo), `worktrees.root` (p. ej. `~/worktrees`), `launch` (topes), `workers` (`mode`, `permissionMode` —por defecto `auto`: el clasificador aprueba lo seguro y los hooks de `guard` siguen frenando lo peligroso; con `acceptEdits` los comandos compuestos se deniegan—, `allowedTools`, `maxTurns`), `testCommand`, `labels`. Lo que generan las corridas va a `.dev-flow/` (ignorado por git; fuera de `.claude/`, que Claude Code protege de escrituras).
 
 ## Sesiones por feature sin abusar
 

@@ -12,6 +12,8 @@ const MAP = [
   ['shared/arch/archlib.cjs', ['plugins/arch/skills/arch-first/scripts/archlib.cjs', 'plugins/dev-flow/lib/arch/archlib.cjs']],
   ['shared/arch/arch-check.cjs', ['plugins/arch/skills/arch-first/scripts/arch-check.cjs', 'plugins/dev-flow/lib/arch/arch-check.cjs']],
   ['shared/adr.cjs', ['plugins/arch/skills/adr/scripts/adr.cjs', 'plugins/dev-flow/lib/adr.cjs']],
+  // Perfiles de plugins: los lee /dev-flow:init (settings por repo) y /dev-flow:doctor.
+  ['shared/profiles.json', ['plugins/dev-flow/lib/profiles.json']],
 ];
 let bad = 0;
 for (const [src, dests] of MAP) {

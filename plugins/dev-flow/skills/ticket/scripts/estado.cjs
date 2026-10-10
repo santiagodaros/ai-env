@@ -2,7 +2,8 @@
 // Genera el estado del proyecto desde GitHub y el PRD (no desde la memoria del chat).
 // Uso: node estado.cjs [--write] [--days 14] [--json]
 // Escribe entre <!-- estado:start --> y <!-- estado:end --> en el archivo de estado de .claude/dev-flow.json
-// (por defecto docs/STATE.md; en tu forma de trabajar, docs/ESTADO.md). Lo de afuera de las marcas no se toca:
+// (docs/STATE.md, el mismo para los dos modos; un repo que solo tiene docs/ESTADO.md, el nombre anterior, sigue usándolo).
+// Lo de afuera de las marcas no se toca:
 // ahí van las decisiones y notas escritas a mano. Sin --write, imprime el bloque.
 'use strict';
 const fs = require('fs');
@@ -69,8 +70,8 @@ function build({ issues, open, merged, secs }) {
 function write(block) {
   const f = path.join(root, cfg.state);
   const START = '<!-- estado:start -->', END = '<!-- estado:end -->';
-  let s = fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : `# Estado\n\nDecisiones y notas a mano arriba o abajo del bloque generado.\n\n## Decisiones\n- \n\n## Estado generado\n\n${START}\n${END}\n`;
-  if (!s.includes(START) || !s.includes(END)) s = s.replace(/\s*$/, `\n\n## Estado generado\n\n${START}\n${END}\n`);
+  let s = fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : `# STATE\n\nEstado vivo del proyecto. El hook rehydrate lo reinyecta tras /compact. Lo escrito a mano va fuera del bloque generado.\n\n## Decisiones\n- \n\n## Estado generado desde GitHub\n\n${START}\n${END}\n`;
+  if (!s.includes(START) || !s.includes(END)) s = s.replace(/\s*$/, `\n\n## Estado generado desde GitHub\n\n${START}\n${END}\n`);
   s = s.replace(new RegExp(`${START}[\\s\\S]*?${END}`), `${START}\n${block}\n${END}`);
   fs.mkdirSync(path.dirname(f), { recursive: true });
   fs.writeFileSync(f, s);

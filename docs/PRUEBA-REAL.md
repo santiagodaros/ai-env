@@ -33,6 +33,7 @@ Esperado: termina con el diagnóstico sin ninguna `FALLA`, los 6 plugins en `OK`
 - [ ] el instalador termina sin errores
 - [ ] existe `$HOME\.claude\settings.json.bak` si ya tenías settings
 - [ ] volver a correrlo dice "Nada que cambiar" en la parte de statusline
+- [ ] perfiles sin instalar nada: `$env:AI_ENV_DRY_RUN='1'; $env:AI_ENV_PROFILE='cloud'; irm https://raw.githubusercontent.com/santiagodaros/ai-env/main/install.ps1 | iex` muestra `Plugins (perfil cloud): guard arch dev-flow cloud-ops`; y `& ([scriptblock]::Create((irm https://raw.githubusercontent.com/santiagodaros/ai-env/main/install.ps1))) -PluginProfile frontend` muestra el de frontend. Después: `Remove-Item Env:AI_ENV_DRY_RUN, Env:AI_ENV_PROFILE`
 
 ## 2. Repo descartable
 
@@ -89,8 +90,9 @@ Esperado: rechaza si quedan "(completar)" o cero puertos; con el diseño complet
 | 4.6 | "En `src/domain/saludo.ts` importá `fs`" | **Bloqueado** por la regla de dependencia |
 | 4.7 | `/dev-flow:init`; elegí **Por features**, decí que el repo lo usa más gente y poné un término privado de prueba | Una sola pantalla con lo encontrado y lo que va a escribir, y las opciones Aplicar / Revisar / Cancelar. Al aplicar: `docs/STATE.md`, `.gitignore`, bloque de comandos en `CLAUDE.md`, plugins en `.claude/settings.json` y `.private-terms` sin seguimiento en `git status`. Propone el commit en `chore/dev-flow-init` y no lo hace sin tu sí |
 | 4.7b | Corré `/dev-flow:init` otra vez; en otra, editá `CLAUDE.md` entre la vista previa y el sí | La segunda vez no hay nada para hacer. Si el repo cambió después de la vista previa, `apply` se niega (`stale-preview`) y muestra la vista previa nueva |
+| 4.7c | En un repo con React, `/dev-flow:init`: aceptá el perfil sugerido y decí que el repo es solo tuyo. Después `/dev-flow:doctor` | Sugiere `frontend` y dice por qué. Escribe `.claude/settings.local.json` (sin seguimiento en git) con cloud-ops apagado. `doctor` muestra `perfil de plugins: frontend … (desde local)`. Reiniciá Claude Code en ese repo: las skills de cloud-ops no aparecen |
 
-- [ ] 4.1  - [ ] 4.2  - [ ] 4.3  - [ ] 4.4  - [ ] 4.5  - [ ] 4.6  - [ ] 4.7  - [ ] 4.7b
+- [ ] 4.1  - [ ] 4.2  - [ ] 4.3  - [ ] 4.4  - [ ] 4.5  - [ ] 4.6  - [ ] 4.7  - [ ] 4.7b  - [ ] 4.7c
 
 ## 4b. Camino corto
 

@@ -43,7 +43,7 @@ Scripts: `D="${CLAUDE_PLUGIN_ROOT}/skills/dispatch/scripts"` → `node "$D/dispa
 9. **Si se cortó** (sin turnos, error, máquina apagada): `dispatch.cjs resume --run <id> [--max-turns 40] --launch`. Retoma la misma sesión en el mismo worktree desde su `progress.md`.
 10. **PR**: desde el worktree, `ticket.cjs pr <N> --card .dev-flow/cards/<N>.json --push`. Commitea `docs/tickets/<N>.md` (resumen del expediente: decisiones y por qué) y lo cita en el PR.
 11. **Auditoría**: `dispatch.cjs run --pr <P> --role auditor --launch`. El que implementó nunca audita. `aprobar` + checks verdes → **el merge lo decide el usuario**. `cambios` → nuevo implementer sobre el mismo ticket: va a recibir el índice del expediente con los hallazgos abiertos. `bloquear` → se discute antes de seguir.
-12. **Cierre**: `estado.cjs --write`, `harness.cjs check --end` (checkpoints: tickets en curso dentro del tope, PRs con tarjeta y veredicto, ESTADO al día, sin worktrees para limpiar) y `worktree.cjs gc --apply`.
+12. **Cierre**: `estado.cjs --write`, `harness.cjs check --end` (checkpoints: tickets en curso dentro del tope, PRs con tarjeta y veredicto, `docs/STATE.md` al día, sin worktrees para limpiar) y `worktree.cjs gc --apply`.
 
 ## Mejora continua
 - `dispatch.cjs stats`: costo, turnos, cortes, reanudaciones, retrabajo, permisos denegados y hallazgos repetidos, sin leer contenido. Los permisos denegados son candidatos para `workers.allowedTools`.

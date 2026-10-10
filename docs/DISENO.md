@@ -42,6 +42,11 @@ docs/                             este archivo, PRUEBA-REAL.md, ejemplos de CLAU
 | Memoria en tres capas, escrita por scripts | El expediente por ticket (hilo), el mapa del código y la memoria por rol. El índice del expediente y las métricas los genera un script; la memoria por rol solo cambia con aprobación. Así lo que lee el siguiente agente es corto y no lo puede envenenar un worker |
 | Se evalúa el destino, no el camino | `harness.cjs check --end` y las evals del arnés califican el estado final con chequeos objetivos; los workers pueden llegar por caminos distintos |
 | El Tech Lead recibe referencias | `collect`, `status` y `lead-notify` devuelven una línea y rutas. Pasar contenido de agente en agente degrada la información y llena el contexto del orquestador |
+| Perfiles de plugins por repo, no por máquina | Claude Code habilita plugins por proyecto (`enabledPlugins`). Se instalan los seis una vez y cada repo activa los de su perfil (`shared/profiles.json`: core, app, cloud, frontend, full), en `.claude/settings.json` si se comparte o `.claude/settings.local.json` si no. Medido con `claude -p`: core agrega 520 tokens y full 2.170 sobre una base de ~38.800; las skills manuales no cargan su descripción. El beneficio principal es la precisión (de 11 skills automáticas a 1 en core), no el ahorro |
+| `-PluginProfile`, no `-Profile` | `$PROFILE` es una variable automática de PowerShell. Con `irm \| iex` no se pasan parámetros: ahí vale `AI_ENV_PROFILE` |
+| Un solo archivo de estado del proyecto: `docs/STATE.md` | Los dos modos lo usan (Tech Lead agrega el bloque generado desde GitHub). Un repo que solo tiene `docs/ESTADO.md`, el nombre anterior, lo sigue usando sin configurar nada. Lo de cada feature y cada ticket no se fusiona: es lo que permite retomar |
+| Latencia de hooks relativa al arranque de Node | Un umbral absoluto depende de la máquina (Node solo arranca en ~35 ms en Linux y más en Windows). Lo que controla el hook es lo que suma: los de `PreToolUse` y `UserPromptSubmit`, que corren en cada llamada o mensaje, ≤ 30 ms sobre `node -e 0` (prueba en el smoke test). Los de sesión pueden lanzar git o npm y se informan |
+| La macro `feature-run` es opcional | `spec-interview` → implementación → `feature-close` → `pr-prep` es una cadena de primitivas con los mismos contratos de archivos (`docs/features/<slug>/`); `feature-run` solo la recorre de corrido |
 | Un solo cupo para features y workers | `launch.cjs` y `dispatch.cjs` comparten `lib/launch-guard.cjs` y el registro: no se duplica el gasto lanzando por dos caminos |
 
 ## Lo que un plugin no puede llevar
@@ -57,7 +62,7 @@ Statusline, permisos (`permissions.deny`) y `CLAUDE.md` o `rules/`. Se resuelven
 - `regla` es un identificador fijo en minúsculas y guiones. Es lo único que se registra junto con el hook y la decisión; nunca el comando, la ruta ni el contenido.
 - Respeta los interruptores: `run` ya atiende `AI_ENV_HOOKS` y `AI_ENV_HOOKS_SKIP`.
 - La carpeta del proyecto sale de `projectDir(input)`, no de `process.cwd()`.
-- Todo hook declara `timeout` en `hooks.json`. Los de `PreToolUse` corren en cada llamada a herramienta: sin procesos externos y sin recorrer el repo.
+- Todo hook declara `timeout` en `hooks.json`. Los de `PreToolUse` y `UserPromptSubmit` corren en cada llamada a herramienta o mensaje: sin procesos externos, sin red, sin recorrer el repo y con ≤ 30 ms por encima de `node -e 0` (lo mide el smoke test).
 - Un hook `Stop` bloquea como máximo una vez por turno (`stop_hook_active`).
 - En Windows `git` se ejecuta sin shell; `npm`, `az` y otros `.cmd` necesitan shell.
 
@@ -68,6 +73,7 @@ Statusline, permisos (`permissions.deny`) y `CLAUDE.md` o `rules/`. Se resuelven
 | `shared/hooks-lib.cjs` | `hooks/lib.cjs` de cada plugin con hooks |
 | `shared/arch/archlib.cjs`, `shared/arch/arch-check.cjs` | `plugins/arch/skills/arch-first/scripts/` y `plugins/dev-flow/lib/arch/` |
 | `shared/adr.cjs` | `plugins/arch/skills/adr/scripts/` y `plugins/dev-flow/lib/` |
+| `shared/profiles.json` | `plugins/dev-flow/lib/` (los instaladores llevan una copia literal; `tests/profiles.cjs` verifica que coincidan) |
 
 Se edita siempre la fuente y se corre `node scripts/sync-shared.cjs`. Editar una copia a mano hace fallar el hook de git y el CI. Un cambio en `shared/` cambia varios plugins a la vez: todos suben su versión.
 

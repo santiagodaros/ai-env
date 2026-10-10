@@ -22,7 +22,7 @@ El estado del trabajo vive en GitHub (issues, PRs, checks) y en el archivo de es
 - `create` arma el issue con la rebanada del PRD, los criterios como casillas y el contrato de entrega; etiquetas `prd:<ID>`, `tipo:feat|fix` y `estado:listo`. Si ya hay un issue abierto para ese id, no duplica.
 - `claim` devuelve la rama (`feat/<N>-<slug>`) y el nombre de worktree. Con `--develop` además la vincula al issue en GitHub.
 - `pr` exige estar en la rama del ticket, arma el cuerpo con `Closes #N` y la tarjeta de entrega validada, y pasa el issue a "en revisión". No hace push salvo `--push`.
-- `estado.cjs --write` escribe entre `<!-- estado:start -->` y `<!-- estado:end -->` del archivo de estado (`state` en `.claude/dev-flow.json`; por ejemplo `docs/ESTADO.md`): cobertura del PRD, en curso, bloqueados, listos y mergeado reciente. Lo que está fuera de las marcas (decisiones a mano) no se toca.
+- `estado.cjs --write` escribe entre `<!-- estado:start -->` y `<!-- estado:end -->` del archivo de estado (`docs/STATE.md`, el mismo que usa el modo por features; un repo que solo tiene `docs/ESTADO.md`, el nombre anterior, sigue usándolo): cobertura del PRD, en curso, bloqueados, listos y mergeado reciente. Lo que está fuera de las marcas (decisiones a mano) no se toca.
 
 ## Reglas
 - Crear o editar issues y PRs cambia algo visible para el equipo: hacelo cuando el usuario lo pidió o cuando el flujo de `dispatch` lo indica, nunca "por las dudas".

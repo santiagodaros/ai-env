@@ -2,13 +2,31 @@
 #   irm https://raw.githubusercontent.com/santiagodaros/ai-env/main/install.ps1 | iex
 # Se puede volver a correr: actualiza en vez de duplicar.
 # Opciones por variable de entorno (definilas antes de correrlo):
-#   $env:AI_ENV_PLUGINS = 'guard dev-flow'   que plugins instalar (por defecto, los seis)
+#   $env:AI_ENV_PROFILE = 'core'             perfil: core, app, cloud, frontend o full (por defecto, full: los seis)
+#   $env:AI_ENV_PLUGINS = 'guard dev-flow'   lista explicita de plugins; si esta definida, gana sobre el perfil
+#   $env:AI_ENV_DRY_RUN = '1'                solo mostrar que plugins instalaria, sin tocar nada
 #   $env:AI_ENV_NO_SETUP = '1'               no tocar ~\.claude\settings.json (statusline y actualizacion automatica)
 #   $env:AI_ENV_FORCE_STATUSLINE = '1'       reemplazar una statusline que ya tengas
 #   $env:AI_ENV_SOURCE = 'usuario/repo'      instalar desde un fork o una carpeta local
+# Con el script descargado tambien vale el parametro: .\install.ps1 -PluginProfile cloud
+#   o sin descargarlo: & ([scriptblock]::Create((irm https://raw.githubusercontent.com/santiagodaros/ai-env/main/install.ps1))) -PluginProfile cloud
+# (-PluginProfile y no -Profile: $PROFILE es una variable automatica de PowerShell.)
+param([string]$PluginProfile = '')
 $ErrorActionPreference = 'Stop'
 $source = if ($env:AI_ENV_SOURCE) { $env:AI_ENV_SOURCE } else { 'santiagodaros/ai-env' }
-$plugins = if ($env:AI_ENV_PLUGINS) { $env:AI_ENV_PLUGINS -split '[ ,]+' | Where-Object { $_ } } else { 'guard', 'arch', 'dev-flow', 'app-review', 'cloud-ops', 'front-studio' }
+# Copia literal de shared/profiles.json (tests/profiles.cjs verifica que coincidan).
+$profiles = [ordered]@{
+  core = 'guard arch dev-flow'
+  app = 'guard arch dev-flow app-review'
+  cloud = 'guard arch dev-flow cloud-ops'
+  frontend = 'guard arch dev-flow app-review front-studio'
+  full = 'guard arch dev-flow app-review cloud-ops front-studio'
+}
+$profileName = if ($PluginProfile) { $PluginProfile } elseif ($env:AI_ENV_PROFILE) { $env:AI_ENV_PROFILE } else { 'full' }
+if (-not $profiles.Contains($profileName)) { throw "Perfil desconocido: $profileName. Usa core, app, cloud, frontend o full." }
+if ($env:AI_ENV_PLUGINS) { $plugins = $env:AI_ENV_PLUGINS -split '[ ,]+' | Where-Object { $_ }; $origin = 'AI_ENV_PLUGINS' }
+else { $plugins = $profiles[$profileName] -split ' '; $origin = "perfil $profileName" }
+if ($env:AI_ENV_DRY_RUN) { Write-Host "Plugins ($origin): $($plugins -join ' ')"; return }
 function Say($t) { Write-Host "`n== $t" }
 function Need($cmd, $hint) { if (-not (Get-Command $cmd -ErrorAction SilentlyContinue)) { throw "Falta $cmd. $hint" } }
 function Run { $old = $ErrorActionPreference; $ErrorActionPreference = 'Continue'; $exe = $args[0]; $rest = @($args | Select-Object -Skip 1); $out = & $exe @rest 2>&1 | ForEach-Object { "$_" }; $code = $LASTEXITCODE; $ErrorActionPreference = $old; $out | ForEach-Object { Write-Host $_ }; if ($code -ne 0) { throw "Fallo ($code): $($args -join ' ') :: $($out -join ' ')" } }
@@ -26,7 +44,7 @@ Say 'Marketplace'
 Run claude plugin marketplace add $source
 Try-Run claude plugin marketplace update ai-env
 
-Say 'Plugins'
+Say "Plugins ($origin)"
 foreach ($p in $plugins) {
   Run claude plugin install "$p@ai-env"
   Try-Run claude plugin update "$p@ai-env"
@@ -52,5 +70,5 @@ if ($setup -and (Test-Path $setup)) {
 }
 
 Say 'Listo'
-Write-Host 'Reinicia Claude Code. En cada repo, una vez: /dev-flow:project-init'
+Write-Host 'Reinicia Claude Code. En cada repo, una vez: /dev-flow:init (activa solo los plugins del perfil de ese repo)'
 Write-Host 'Para actualizar o reparar, volve a correr este instalador.'

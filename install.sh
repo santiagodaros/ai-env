@@ -3,13 +3,26 @@
 #   curl -fsSL https://raw.githubusercontent.com/santiagodaros/ai-env/main/install.sh | sh
 # Se puede volver a correr: actualiza en vez de duplicar.
 # Opciones por variable de entorno:
-#   AI_ENV_PLUGINS="guard dev-flow"   qué plugins instalar (por defecto, los seis)
+#   AI_ENV_PROFILE=core               perfil: core, app, cloud, frontend o full (por defecto, full: los seis)
+#   AI_ENV_PLUGINS="guard dev-flow"   lista explícita de plugins; si está definida, gana sobre el perfil
+#   AI_ENV_DRY_RUN=1                  solo mostrar qué plugins instalaría, sin tocar nada
 #   AI_ENV_NO_SETUP=1                 no tocar ~/.claude/settings.json (statusline y actualización automática)
 #   AI_ENV_FORCE_STATUSLINE=1         reemplazar una statusline que ya tengas
 #   AI_ENV_SOURCE=usuario/repo        instalar desde un fork o una carpeta local
 set -e
 SOURCE="${AI_ENV_SOURCE:-santiagodaros/ai-env}"
-PLUGINS="${AI_ENV_PLUGINS:-guard arch dev-flow app-review cloud-ops front-studio}"
+PROFILE="${AI_ENV_PROFILE:-full}"
+# Copia literal de shared/profiles.json (tests/profiles.cjs verifica que coincidan).
+case "$PROFILE" in
+  core) PROFILE_PLUGINS="guard arch dev-flow" ;;
+  app) PROFILE_PLUGINS="guard arch dev-flow app-review" ;;
+  cloud) PROFILE_PLUGINS="guard arch dev-flow cloud-ops" ;;
+  frontend) PROFILE_PLUGINS="guard arch dev-flow app-review front-studio" ;;
+  full) PROFILE_PLUGINS="guard arch dev-flow app-review cloud-ops front-studio" ;;
+  *) printf 'Perfil desconocido: %s. Usá core, app, cloud, frontend o full.\n' "$PROFILE" >&2; exit 1 ;;
+esac
+if [ -n "$AI_ENV_PLUGINS" ]; then PLUGINS="$AI_ENV_PLUGINS"; ORIGIN="AI_ENV_PLUGINS"; else PLUGINS="$PROFILE_PLUGINS"; ORIGIN="perfil $PROFILE"; fi
+if [ -n "$AI_ENV_DRY_RUN" ]; then printf 'Plugins (%s): %s\n' "$ORIGIN" "$PLUGINS"; exit 0; fi
 say() { printf '\n== %s\n' "$1"; }
 need() { command -v "$1" >/dev/null 2>&1 || { printf 'Falta %s. %s\n' "$1" "$2" >&2; exit 1; }; }
 
@@ -24,7 +37,7 @@ say "Marketplace"
 claude plugin marketplace add "$SOURCE"
 claude plugin marketplace update ai-env >/dev/null 2>&1 || true
 
-say "Plugins"
+say "Plugins ($ORIGIN)"
 for p in $PLUGINS; do
   claude plugin install "$p@ai-env"
   claude plugin update "$p@ai-env" >/dev/null 2>&1 || true
@@ -43,5 +56,5 @@ else
 fi
 
 say "Listo"
-echo "Reiniciá Claude Code. En cada repo, una vez: /dev-flow:project-init"
+echo "Reiniciá Claude Code. En cada repo, una vez: /dev-flow:init (activa solo los plugins del perfil de ese repo)"
 echo "Para actualizar o reparar, volvé a correr este instalador."

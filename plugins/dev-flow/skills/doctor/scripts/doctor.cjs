@@ -95,7 +95,22 @@ add(sw.some((s) => /^AI_ENV_HOOKS=(off|0|false|no)$/i.test(s)) ? 'AVISO' : 'INFO
 const has = (f) => fs.existsSync(path.join(cwd, f));
 if (!has('.git')) add('INFO', 'esta carpeta no es la raíz de un repo git', cwd);
 else {
-  add(has('docs/STATE.md') ? 'OK' : 'INFO', 'docs/STATE.md', has('docs/STATE.md') ? '' : 'falta: /dev-flow:init');
+  let stateRel = 'docs/STATE.md';
+  try { stateRel = require('../../../lib/config.cjs').load(cwd).state || stateRel; } catch { /* config inválida */ }
+  if (stateRel === 'docs/ESTADO.md' && !has('docs/STATE.md')) add('INFO', 'estado del proyecto', 'docs/ESTADO.md (nombre anterior; sigue funcionando). Para unificar: git mv docs/ESTADO.md docs/STATE.md');
+  else add(has(stateRel) ? 'OK' : 'INFO', 'estado del proyecto', has(stateRel) ? stateRel : `falta ${stateRel}: /dev-flow:init`);
+  // Perfil activo: plugins de ai-env habilitados según usuario < repo (.claude/settings.json) < local (.claude/settings.local.json).
+  try {
+    const PR = require('../../../lib/profiles.json');
+    const all = PR.profiles.full.plugins, enabled = {}, from = {};
+    const layers = [['usuario', path.join(home, '.claude', 'settings.json')], ['repo', path.join(cwd, '.claude', 'settings.json')], ['local', path.join(cwd, '.claude', 'settings.local.json')]];
+    for (const [name, f] of layers) { const ep = (json(f) || {}).enabledPlugins || {}; for (const p of all) { const k = `${p}@${PR.marketplace}`; if (k in ep) { enabled[p] = ep[k] === true; from[p] = name; } } }
+    const on = all.filter((p) => enabled[p]);
+    const match = PR.order.find((n) => JSON.stringify([...PR.profiles[n].plugins].sort()) === JSON.stringify([...on].sort()));
+    const src = [...new Set(on.map((p) => from[p]).concat(all.filter((p) => enabled[p] === false).map((p) => from[p])))].join(' + ') || 'ninguna';
+    if (!on.length) add('INFO', 'perfil de plugins', 'ningún plugin de ai-env habilitado para este repo');
+    else add(match ? 'OK' : 'INFO', 'perfil de plugins', match ? `${match}: ${PR.profiles[match].for} (desde ${src})` : `personalizado: ${on.join(', ')} (desde ${src}). Para fijar un perfil: /dev-flow:init`);
+  } catch (e) { add('AVISO', 'perfil de plugins', `no se pudo calcular: ${e.message}`); }
   const gi = has('.gitignore') ? fs.readFileSync(path.join(cwd, '.gitignore'), 'utf8') : '';
   add(gi.includes('.claude/.feature-flow/') ? 'OK' : 'AVISO', '.gitignore cubre el estado local', gi.includes('.claude/.feature-flow/') ? '' : 'falta .claude/.feature-flow/: /dev-flow:init');
   const pkg = json(path.join(cwd, 'package.json'));

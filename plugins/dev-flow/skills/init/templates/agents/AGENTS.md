@@ -13,7 +13,7 @@
 | Archivo / carpeta | Qué hay | Cuándo leerlo |
 |---|---|---|
 | `docs/PRD.md` | Fuente de verdad del producto (ids `[F-03]`) | Solo el Tech Lead; los workers reciben su rebanada |
-| `docs/ESTADO.md` | Estado generado desde GitHub + decisiones | Al retomar el proyecto |
+| `docs/STATE.md` | Decisiones a mano + estado generado desde GitHub | Al retomar el proyecto |
 | `docs/codemap.md` | Mapa del código: qué exporta y usa cada archivo | Antes de abrir archivos, para saber dónde mirar |
 | `docs/conventions.md` | Estilo, nombres, errores, estructura | Antes de escribir código |
 | `docs/verification.md` | Cómo se demuestra que algo funciona | Antes de entregar la tarjeta (y el auditor, siempre) |
