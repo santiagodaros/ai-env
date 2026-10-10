@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+:root { --bg: #ffffff; --text: #1f2933; --muted: #52606d; }
+:focus-visible { outline: 2px solid #1d4ed8; outline-offset: 2px; }
+.fade { transition: opacity .2s; }
+@media (prefers-reduced-motion: reduce) { .fade { transition: none; } }
+input { border: 1px solid #6b7280; background: #ffffff; }
+</style>
+</head>
+<body>
+<a href="#main">Saltar al contenido</a>
+<nav><a href="/">Inicio</a></nav>
+<main id="main">
+<h1>Facturas</h1>
+<h2>Detalle</h2>
+<img src="logo.png" alt="">
+<button aria-label="Cerrar panel"><svg viewBox="0 0 10 10"><path d="M0 0"/></svg></button>
+<label for="q">Buscar</label><input id="q" type="text">
+<table><tr><th scope="col">Total</th></tr><tr><td>1</td></tr></table>
+</main>
+</body>
+</html>

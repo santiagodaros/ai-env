@@ -1,7 +1,7 @@
 {
   "name": "front-studio",
-  "version": "1.0.0",
-  "description": "Rediseño de front con preview en vivo, brand kit, dirección visual anti-look-IA y re-auditoría de seguridad.",
+  "version": "2.0.0",
+  "description": "Crítica y rediseño de UI: estilo por preguntas, kit por página con contraste verificado, tres direcciones más la estándar, preview en vivo, accesibilidad, performance, detector de look de IA y plan de trabajo.",
   "author": {
     "name": "ai-env contributors",
     "url": "https://github.com/santiagodaros/ai-env"
@@ -13,6 +13,8 @@
     "frontend",
     "diseno",
     "react",
-    "accesibilidad"
+    "accesibilidad",
+    "performance",
+    "design-tokens"
   ]
 }

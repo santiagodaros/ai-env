@@ -12,7 +12,7 @@ Requiere el preview aprobado (`design/preview/index.html`) y `design/tokens.css`
 ## Antes de escribir código
 1. Leé `package.json` y la estructura de carpetas. No asumas Tailwind, CSS Modules ni una librería de componentes: detectá lo que usa el repo y seguilo.
 2. Leé el `CLAUDE.md` del repo y sus comandos de verificación (typecheck, lint, tests).
-3. Mapeá los tokens de `design/tokens.css` al mecanismo de tema existente (variables CSS, configuración de Tailwind, objeto de tema). Un solo lugar para los valores.
+3. Mapeá los tokens al mecanismo de tema existente (variables CSS, configuración de Tailwind, objeto de tema). Un solo lugar para los valores. Si hay kits por página (`design/pages/<slug>/`), traen `tailwind.css` (Tailwind v4) y `tokens.json` (DTCG, para Style Dictionary u otro generador) listos.
 4. Hacé el inventario de componentes desde los `data-component` del preview y marcá cuáles ya existen en el repo para reutilizarlos o adaptarlos.
 
 ## Por rebanadas
@@ -20,7 +20,7 @@ Orden: esqueleto (navegación, barra superior, alcance) → una pantalla por vez
 1. Implementá solo esa rebanada. Los estados (cargando, vacío, error, desactualizado, sin permiso, parcial) se implementan con la lógica real de datos, no como decoración.
 2. Movimiento: CSS primero, con las duraciones y curvas de `direction.md` y `prefers-reduced-motion`. No agregues una librería de animación sin preguntar.
 3. Ejecutá typecheck, lint y los tests del repo. Si falla, corregí antes de seguir.
-4. Corré `ui-review` sobre el diff. Sin P0 abiertos para pasar a la siguiente rebanada.
+4. Corré `ui-review` sobre el diff. Sin P0 abiertos para pasar a la siguiente rebanada. Con el servidor corriendo, `shots.cjs before/after/compare` (de `preview-setup`) deja la evidencia visual de la rebanada.
 5. Un commit por rebanada (el usuario decide cuándo pushear).
 
 ## Accesibilidad al portar

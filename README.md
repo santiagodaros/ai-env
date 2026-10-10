@@ -54,7 +54,7 @@ Y una vez por repo: `/dev-flow:project-init`. Con `--settings` deja el marketpla
 | [`dev-flow`](plugins/dev-flow/README.md) | 11 skills manuales y 3 hooks: features, camino corto, compuertas, cierre y presupuesto. Instala `arch` como dependencia | hasta ~1.400 tokens |
 | [`app-review`](plugins/app-review/README.md) | 3 skills y 2 subagentes de revisión | ~600 tokens |
 | [`cloud-ops`](plugins/cloud-ops/README.md) | 6 skills de Azure, verificación de Terraform, Bicep y PowerShell, y el servidor MCP de Microsoft Learn | ~890 tokens |
-| [`front-studio`](plugins/front-studio/README.md) | 8 skills de rediseño de front y re-auditoría de seguridad | ~690 tokens |
+| [`front-studio`](plugins/front-studio/README.md) | 12 skills de crítica y rediseño de UI (kit por página, opciones, accesibilidad, performance, look de IA, plan de trabajo) y re-auditoría de seguridad | ~890 tokens |
 
 Cada plugin tiene su propio README con el detalle de skills, hooks, configuración y límites. Los costos son la estimación de `claude plugin details <plugin>@ai-env`; los hooks no consumen contexto. Las skills se invocan con el prefijo del plugin (`/dev-flow:feature-run`).
 
@@ -68,6 +68,8 @@ Cada plugin tiene su propio README con el detalle de skills, hooks, configuraci�
 | Feature | `/dev-flow:feature-run`. Al abrir una sesión en su rama, Claude ya sabe la etapa y el paso siguiente |
 | Arreglo puntual | `/dev-flow:quick-fix` |
 | Cambio de infraestructura | Pedilo normalmente: `iac-change-review` resume el plan antes de aplicar e `iac-verify` valida al terminar |
+| UI existente para criticar o rediseñar | `/front-studio:ui-options`: puntajes, plan de trabajo con issues y tres direcciones más la estándar |
+| Ver los cambios de UI en vivo | `/front-studio:preview-setup`: `.claude/launch.json` para el panel de preview de la app, o capturas antes/después en la terminal |
 | Algo interrumpe de más | `/dev-flow:doctor stats` y los interruptores |
 
 ## Interruptores
@@ -87,6 +89,7 @@ Variables de entorno del proceso de Claude Code (no de los comandos que corre Cl
 |---|---|---|
 | Statusline | El `settings.json` de un plugin solo admite `agent` y `subagentStatusLine` | `/dev-flow:setup` la instala una vez; `rehydrate` la mantiene al día |
 | Permisos (`deny`) | No se distribuyen por plugin | Los hooks `secret-read` y `bash-guard` |
+| `.claude/launch.json` (panel de preview) | Es configuración por proyecto | `/front-studio:preview-setup` lo genera |
 | `CLAUDE.md` y `rules/` | Un `CLAUDE.md` en la raíz del plugin no se carga | Las reglas son skills con `paths`; `project-init` completa el `CLAUDE.md` del repo. Ejemplos en `docs/examples/` |
 
 ## Verificación

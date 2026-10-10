@@ -1,5 +1,7 @@
 # Tics de una UI generada (y qué hacer en su lugar)
 
+Los que se pueden ver en el código los detecta `${CLAUDE_PLUGIN_ROOT}/scripts/ai-look.cjs` (cada tic tiene un id; el índice va de 0 a 100). Los de juicio (jerarquía, copy, si una métrica es inventada) quedan para la revisión humana o del modelo.
+
 Un tic no está prohibido: es una decisión por defecto. Si el brief o la marca lo pide, se usa. Si aparece sin que nadie lo haya elegido, se revisa.
 
 ## Paleta
@@ -27,6 +29,9 @@ Un tic no está prohibido: es una decisión por defecto. Si el brief o la marca 
 ## Movimiento
 - Entrada con desvanecido y desplazamiento hacia arriba en cada sección, elevación al pasar el mouse por cada tarjeta, manchas de degradé flotando, desenfoque tipo vidrio en todo.
 - Hacer: ver `motion.md`. Movimiento que responde a una acción o ubica al usuario; un solo momento orquestado.
+
+## Ids del detector
+`paleta-crema-terracota`, `negro-acido`, `degrade-violeta`, `texto-degrade`, `radio-unico`, `sombra-gris-suave`, `eyebrow-mayusculas`, `flecha-enlace`, `punto-medio`, `raya-etiqueta`, `emoji-icono`, `vidrio`, `entrada-fade-up`, `hover-elevacion`, `copy-de-venta`, `fuente-por-defecto`, `negro-tintado`, `mono-etiquetas`, `fila-kpi`, `manchas-blur`, `numeracion-decorativa`.
 
 ## Prueba final
 Quitá un accesorio: eliminá la decoración que no sirve a una tarea. Si la pantalla se entiende igual, sobraba.

@@ -1,0 +1,4 @@
+{ "tool": "nielsen", "score": 24, "max": 40,
+  "items": [ {"n":1,"name":"Visibilidad del estado del sistema","score":2,"notes":"no hay indicador de datos desactualizados"},
+             {"n":2,"name":"Relación con el mundo real","score":3,"notes":""} ],
+  "findings": [ {"source":"nielsen","id":"h1-estado","title":"No se avisa cuando los datos están desactualizados","severity":"P0","where":"Inicio","fix":"Marca de 'actualizado hace N min' y aviso si supera el umbral","effort":"S"} ] }

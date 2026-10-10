@@ -2,6 +2,10 @@
 
 Cada plugin tiene su versión y cada publicación su tag `<plugin>--v<versión>`. Acá va lo que cambia para quien los usa.
 
+## 2026-10-10 — front-studio 2.0.0
+
+- Crítica y rediseño de UI con números verificables: detector de look de IA, accesibilidad WCAG estática, score de performance (laboratorio en Chromium con --url), plan de trabajo con issues, quiz de estilo, kit por página (OKLCH, AA verificado, Tailwind v4, DTCG), ui-options con tres direcciones más la estándar en una página con selector, preview-setup (launch.json y capturas antes/después), tipos de superficie y rutas de scripts corregidas
+
 ## 2026-10-10 — guard 1.0.1, dev-flow 1.0.1
 
 - Corrige el README: la tabla de interruptores de guard y qué hooks quedaron en arch tras la separación.

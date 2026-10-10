@@ -8,6 +8,6 @@
     {"name": "dev-flow", "source": "./plugins/dev-flow", "description": "Workflow por features: una sesión por feature con topes, camino corto para arreglos chicos, compuertas de pruebas, arquitectura y seguridad, cierre documentado y presupuesto del límite de 5 h. Requiere arch."},
     {"name": "app-review", "source": "./plugins/app-review", "description": "Revisión de código de aplicación en tres lentes (identidad, seguridad, costo de APIs), reglas para React y llamadas a APIs, y subagentes reviewer y explorer."},
     {"name": "cloud-ops", "source": "./plugins/cloud-ops", "description": "Azure: verificación contra Microsoft Learn (con su servidor MCP), KQL de inventario, revisión de planes de Terraform y what-if de Bicep, verificación de IaC al terminar, entregables y registro de estado."},
-    {"name": "front-studio", "source": "./plugins/front-studio", "description": "Rediseño de front con preview en vivo, brand kit y re-auditoría de seguridad."}
+    {"name": "front-studio", "source": "./plugins/front-studio", "description": "Crítica y rediseño de UI con kit por página, opciones con selector, accesibilidad, performance, look de IA y plan de trabajo."}
   ]
 }

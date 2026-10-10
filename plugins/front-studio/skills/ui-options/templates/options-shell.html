@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Opciones PANTALLA</title>
+<style>
+/* ==== Barra del selector: neutra a propósito, no pertenece a ninguna dirección ==== */
+:root { --opt-bg: #ffffff; --opt-fg: #1c2024; --opt-muted: #59636e; --opt-line: #d1d9e0; --opt-sel: #1c2024; --opt-on: #ffffff; --opt-focus: #0b57d0; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --opt-bg: #16191d; --opt-fg: #e6e9ec; --opt-muted: #9aa4ae; --opt-line: #333a42; --opt-sel: #e6e9ec; --opt-on: #16191d; --opt-focus: #8ab4f8; } }
+:root[data-theme="dark"] { --opt-bg: #16191d; --opt-fg: #e6e9ec; --opt-muted: #9aa4ae; --opt-line: #333a42; --opt-sel: #e6e9ec; --opt-on: #16191d; --opt-focus: #8ab4f8; }
+.opt-bar { position: sticky; top: 0; z-index: 1000; background: var(--opt-bg); color: var(--opt-fg); border-bottom: 1px solid var(--opt-line); padding: 8px 16px; display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+.opt-tabs { display: flex; flex-wrap: wrap; gap: 4px; }
+.opt-tabs button { font: inherit; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--opt-line); background: transparent; color: var(--opt-fg); cursor: pointer; }
+.opt-tabs button[aria-selected="true"] { background: var(--opt-sel); color: var(--opt-on); border-color: var(--opt-sel); }
+.opt-tabs button:focus-visible { outline: 2px solid var(--opt-focus); outline-offset: 2px; }
+.opt-tabs b { font-weight: 700; margin-right: 6px; }
+.opt-desc { margin: 0; color: var(--opt-muted); flex: 1 1 320px; min-width: 0; }
+.opt-desc strong { color: var(--opt-fg); }
+[data-only][hidden] { display: none !important; }
+
+/* ==== TOKENS POR DIRECCIÓN ====
+   Cada dirección redefine variables y, si hace falta, reglas propias bajo [data-dir="x"].
+   El contenido es el MISMO para las cuatro; lo que cambia es la dirección.
+   Para estructura distinta, marcá bloques con data-only="a" (o "a c") y se muestran solo en esas. */
+body { margin: 0; }
+[data-dir="a"] { /* DIRECCIÓN A */ }
+[data-dir="b"] { /* DIRECCIÓN B */ }
+[data-dir="c"] { /* DIRECCIÓN C */ }
+[data-dir="std"] { /* ESTÁNDAR DE LA CATEGORÍA */ }
+
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }
+</style>
+</head>
+<body data-dir="a">
+<div class="opt-bar" role="region" aria-label="Opciones de diseño">
+  <div class="opt-tabs" role="tablist" aria-label="Dirección">
+    <button role="tab" id="tab-a" data-set="a" aria-controls="stage"><b>A</b>NOMBRE A</button>
+    <button role="tab" id="tab-b" data-set="b" aria-controls="stage"><b>B</b>NOMBRE B</button>
+    <button role="tab" id="tab-c" data-set="c" aria-controls="stage"><b>C</b>NOMBRE C</button>
+    <button role="tab" id="tab-std" data-set="std" aria-controls="stage"><b>E</b>Estándar de la categoría</button>
+  </div>
+  <p class="opt-desc" id="opt-desc" aria-live="polite"></p>
+</div>
+
+<main id="stage" role="tabpanel">
+  <!-- CONTENIDO REAL de la pantalla: el mismo para las cuatro direcciones.
+       Cada bloque que será componente lleva data-component="nombre". Un solo <h1> (el de la pantalla). -->
+</main>
+
+<script>
+// Descripción corta de cada dirección (se muestra en la barra). Completar.
+var DIRS = {
+  a: { name: 'NOMBRE A', idea: 'IDEA CENTRAL', bet: 'QUÉ GANA', risk: 'QUÉ PIERDE' },
+  b: { name: 'NOMBRE B', idea: 'IDEA CENTRAL', bet: 'QUÉ GANA', risk: 'QUÉ PIERDE' },
+  c: { name: 'NOMBRE C', idea: 'IDEA CENTRAL', bet: 'QUÉ GANA', risk: 'QUÉ PIERDE' },
+  std: { name: 'Estándar de la categoría', idea: 'Lo que haría un producto competente y convencional', bet: 'Cero aprendizaje', risk: 'No se distingue' }
+};
+(function () {
+  var tabs = Array.prototype.slice.call(document.querySelectorAll('[role="tab"]'));
+  var stage = document.getElementById('stage'), desc = document.getElementById('opt-desc');
+  function select(d, focus) {
+    if (!DIRS[d]) d = 'a';
+    document.body.setAttribute('data-dir', d);
+    tabs.forEach(function (t) {
+      var on = t.getAttribute('data-set') === d;
+      t.setAttribute('aria-selected', on ? 'true' : 'false');
+      t.tabIndex = on ? 0 : -1;
+      if (on) { stage.setAttribute('aria-labelledby', t.id); if (focus) t.focus(); }
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('[data-only]'), function (el) {
+      el.hidden = el.getAttribute('data-only').split(/\s+/).indexOf(d) < 0;
+    });
+    var x = DIRS[d];
+    desc.innerHTML = '<strong>' + x.name + '.</strong> ' + x.idea + '. Gana: ' + x.bet + '. Riesgo: ' + x.risk + '.';
+    try { history.replaceState(null, '', '#dir-' + d); } catch (e) { /* sin historial (artifact): no importa */ }
+  }
+  tabs.forEach(function (t, i) {
+    t.addEventListener('click', function () { select(t.getAttribute('data-set')); });
+    t.addEventListener('keydown', function (e) {
+      var j = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: tabs.length - 1 }[e.key];
+      if (j === undefined) return;
+      e.preventDefault();
+      select(tabs[(j + tabs.length) % tabs.length].getAttribute('data-set'), true);
+    });
+  });
+  var q = (location.search.match(/[?&]dir=(\w+)/) || [])[1] || (location.hash.match(/^#dir-(\w+)$/) || [])[1];
+  select(q || 'a');
+})();
+</script>
+</body>
+</html>

@@ -567,7 +567,7 @@ const expected = {
   'dev-flow': ['feature-flow', 'feature-run', 'feature-close', 'quick-fix', 'budget-plan', 'spec-interview', 'pr-prep', 'security-diff', 'project-init', 'setup', 'doctor'],
   'app-review': ['app-architecture-review', 'api-call-rules', 'frontend-rules'],
   'cloud-ops': ['context-ledger', 'azure-claim-check', 'client-deliverables', 'deliverable-review', 'azure-inventory-kql', 'iac-change-review'],
-  'front-studio': ['redesign', 'brand-intake', 'product-map', 'design-direction', 'live-preview', 'react-port', 'ui-review', 'security-reaudit'],
+  'front-studio': ['redesign', 'brand-intake', 'product-map', 'design-direction', 'live-preview', 'react-port', 'ui-review', 'security-reaudit', 'style-quiz', 'page-kit', 'ui-options', 'preview-setup'],
 };
 for (const [plug, skills] of Object.entries(expected)) {
   const miss = skills.filter((x) => !fm(path.join(P, plug, 'skills', x, 'SKILL.md')));
@@ -872,6 +872,12 @@ process.exit(0);`);
   const names = fs.readdirSync(P).filter((d) => fs.existsSync(path.join(P, d, '.claude-plugin', 'plugin.json')));
   check('instalador: ambos instalan por defecto todos los plugins que existen', names.every((n) => sh.includes(n) && ps.toString().includes(`'${n}'`)));
 }
+
+// --- front-studio: analizadores, plan, quiz, kit de página, launch.json y capturas
+require('./front-studio.cjs')({
+  check, add,
+  run: (script, argv = [], o = {}) => { const r = spawnSync(process.execPath, [script, ...argv], { encoding: 'utf8', cwd: o.cwd, env: { ...process.env, ...o.env } }); lastOut = `${r.stdout || ''}${r.stderr || ''}`; return { code: r.status, out: lastOut }; },
+});
 
 // --- Reporte
 const w = Math.max(...rows.map((r) => r.name.length));

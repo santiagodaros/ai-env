@@ -19,7 +19,7 @@ Objetivo: una única fuente de verdad de la marca, con números verificados, par
 2. **Preguntá solo lo que falte** (máximo 3): ¿hay paleta oficial?, ¿hay fuente corporativa o licenciada?, ¿qué de la UI actual NO se toca (logo, nombre, colores de estado)?
 3. **Armá la paleta** como 4 a 6 colores con nombre y rol (superficie, texto, acento primario, acento secundario, y estados éxito/advertencia/error/info). Si la marca no define estados, proponelos y marcá "propuesto".
 4. **Verificá el contraste con el script**, no de memoria:
-   `node <base-de-esta-skill>/scripts/contrast.cjs "#FFFFFF:#1A1A1A" "#0B5FFF:#FFFFFF"`
+   `node "${CLAUDE_PLUGIN_ROOT}/skills/brand-intake/scripts/contrast.cjs" "#FFFFFF:#1A1A1A" "#0B5FFF:#FFFFFF"`
    Cada par es `fondo:texto`. Imprime la razón y si pasa AA (4,5 para texto normal, 3 para texto grande y componentes de UI). Corregí lo que no pase y anotá el cambio.
 5. **Tipografía**: familia, roles (títulos, cuerpo, datos numéricos), pesos, fallback del sistema, y de dónde se obtiene (licencia o Google Fonts). Para datos tabulares exigí cifras tabulares.
 6. **Escribí `design/brand.md`** con: personalidad (3 adjetivos y 3 anti-adjetivos), paleta con ratios, tipografía, reglas de logo, voz y tono (ejemplos de botón, error, vacío), y "no tocar".
@@ -29,4 +29,7 @@ Objetivo: una única fuente de verdad de la marca, con números verificados, par
 Mostrá paleta (con ratios) y tipografías en una tabla corta y pedí confirmación. Registrala en `design/STATE.md`.
 
 ## Si no hay kit de marca
-Proponé una paleta partiendo de UN color ancla que el usuario elija o que salga del sitio de la empresa. No uses los acentos por defecto que hoy delatan una UI generada (ver `design-direction/references/ai-tells.md`).
+Proponé una paleta partiendo de UN color ancla que el usuario elija o que salga del sitio de la empresa. No uses los acentos por defecto que hoy delatan una UI generada (ver `${CLAUDE_PLUGIN_ROOT}/skills/design-direction/references/ai-tells.md`).
+
+## Después
+La marca es global. Cada página puede ajustarla sin romperla con `/front-studio:style-quiz` y `/front-studio:page-kit`, que heredan `design/tokens.css`.
