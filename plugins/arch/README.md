@@ -38,7 +38,7 @@ Rechaza si quedan secciones "(completar)" o no hay puertos. Si aprueba, sella un
 
 ## En el CI de tu repo
 
-`/dev-flow:project-init --ci` agrega un workflow que corre `arch-check.cjs` en cada push. A mano: cloná este repo en el job y corré `node .ai-env/plugins/arch/skills/arch-first/scripts/arch-check.cjs`.
+`/dev-flow:init` (paso opcional de CI) agrega un workflow que corre `arch-check.cjs` en cada push. A mano: cloná este repo en el job y corré `node .ai-env/plugins/arch/skills/arch-first/scripts/arch-check.cjs`.
 
 ## Límites
 

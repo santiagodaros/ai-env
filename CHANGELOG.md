@@ -2,6 +2,14 @@
 
 Cada plugin tiene su versión y cada publicación su tag `<plugin>--v<versión>`. Acá va lo que cambia para quien los usa.
 
+## 2026-10-10 — arch 1.0.1
+
+- README: el workflow de arquitectura lo agrega /dev-flow:init (paso opcional de CI)
+
+## 2026-10-10 — dev-flow 2.0.0
+
+- project-init pasa a ser /dev-flow:init, con la forma del init de Pignolo: detect, una pantalla con lo encontrado y lo que se va a escribir, preview con sello y apply --expect que se niega si el plan o el repo cambiaron, verify y commit propuesto en chore/dev-flow-init. Suma .private-terms local para nombres de cliente y respaldo fuera del repo de lo que modifica. Rompe: /dev-flow:project-init y los flags --apply, --agents, --settings y --ci ya no existen
+
 ## 2026-10-10 — dev-flow 1.2.0
 
 - Arnés de agentes: chequeos del arnés (pre, worker, cierre), lead-guard, aviso asíncrono de workers, reanudación por sesión, expediente por ticket con índice y resumen versionable, tamaño S/M/L que fija modelo y turnos, explorer, codemap, lotes paralelos con chequeo de alcance, plan persistente, métricas, memoria por rol aprobada por el usuario y evals con workers reales

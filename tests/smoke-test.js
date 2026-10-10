@@ -408,8 +408,8 @@ if (fs.existsSync(slPath) && fs.existsSync(bpPath) && git.status === 0) {
   fs.rmSync(bdir, { recursive: true, force: true }); fs.rmSync(proj, { recursive: true, force: true });
 } else add('AVISO', 'presupuesto no probado', 'falta statusline, budget.cjs o git');
 
-// --- arch-first, adr, security-diff, project-init
-const needAll = ['arch-first', 'adr'].every((s) => fs.existsSync(path.join(AS, s))) && ['security-diff', 'project-init'].every((s) => fs.existsSync(path.join(A, s)));
+// --- arch-first, adr, security-diff, init
+const needAll = ['arch-first', 'adr'].every((s) => fs.existsSync(path.join(AS, s))) && ['security-diff', 'init'].every((s) => fs.existsSync(path.join(A, s)));
 if (needAll && git.status === 0) {
   const mkproj = () => fs.mkdtempSync(path.join(os.tmpdir(), 'kit-ar-')); // el proyecto no tiene copia de nada: todo corre desde el plugin
   const N = (p, script, argv = [], env = {}) => { const r = spawnSync(process.execPath, [script, ...argv], { cwd: p, encoding: 'utf8', env: { ...process.env, ...env } }); lastOut = `${r.stdout || ''}${r.stderr || ''}`; return { code: r.status, out: lastOut }; };
@@ -503,28 +503,57 @@ if (needAll && git.status === 0) {
   check('security-diff: un riesgo aceptado con motivo deja de bloquear y queda registrado', s.code === 0 && s.j.accepted.length === 2, `exit=${s.code}`);
   fs.rmSync(sp, { recursive: true, force: true });
 
-  // project-init
+  // init (/dev-flow:init): detect → preview con sello → apply --expect → verify
   const ip = fs.mkdtempSync(path.join(os.tmpdir(), 'kit-pi-'));
+  spawnSync('git', ['init', '-q'], { cwd: ip });
   fs.writeFileSync(path.join(ip, 'package.json'), JSON.stringify({ name: 'x', dependencies: { react: '18', express: '4' }, scripts: { test: 'x', build: 'y' } }));
+  fs.mkdirSync(path.join(ip, 'src')); fs.writeFileSync(path.join(ip, 'src', 'a.js'), 'x\n');
   fs.writeFileSync(path.join(ip, 'CLAUDE.md'), '# Mi proyecto\nTexto propio.\n');
-  const det = JSON.parse(N(ip, path.join(A, 'project-init', 'scripts', 'detect.cjs')).out);
-  check('project-init: detecta stack, tipo sugerido y scripts faltantes', det.suggestedType.startsWith('web+api') && det.scripts.includes('test') && det.missingChecks.includes('typecheck'), det.suggestedType);
-  const IN = path.join(A, 'project-init', 'scripts', 'init.cjs');
-  check('project-init: sin --apply no escribe nada', N(ip, IN).code === 0 && !fs.existsSync(path.join(ip, 'docs', 'STATE.md')));
-  N(ip, IN, ['--apply']);
+  const IN = path.join(A, 'init', 'scripts', 'init.cjs');
+  const J = (r) => { try { return JSON.parse(r.out); } catch { return {}; } };
+  const det = J(N(ip, IN, ['detect']));
+  check('init: detect informa stack, tipo sugerido, huecos y pasos recomendados por modo', det.ok && det.detection.suggestedType.startsWith('web+api') && det.summary.attention.includes('no-typecheck') && det.summary.attention.includes('several-stacks') && det.summary.recommended.features.includes('state') && det.summary.recommended['tech-lead'].includes('tech-lead'), JSON.stringify(det.summary || {}).slice(0, 200));
+  const planF = path.join(ip, '..', `plan-${path.basename(ip)}.json`);
+  const iplan = (approved, answers = {}) => fs.writeFileSync(planF, JSON.stringify({ v: 1, approved, answers }));
+  iplan(['gitignore', 'claude-md', 'state', 'private-terms'], { mode: 'features', privateTerms: ['Contoso Ltd'] });
+  const pv = J(N(ip, IN, ['preview', '--plan', planF]));
+  check('init: preview no escribe nada y devuelve un sello', pv.ok && /^[0-9a-f]{24}$/.test(pv.stamp) && !fs.existsSync(path.join(ip, 'docs', 'STATE.md')) && !fs.existsSync(path.join(ip, '.gitignore')));
+  check('init: preview no muestra los términos privados', !/Contoso/.test(JSON.stringify(pv)));
+  check('init: apply sin --expect se niega (uso incorrecto)', N(ip, IN, ['apply', '--plan', planF]).code === 2);
+  fs.appendFileSync(path.join(ip, 'CLAUDE.md'), 'Cambio después del preview.\n');
+  const stale = N(ip, IN, ['apply', '--plan', planF, '--expect', pv.stamp]);
+  check('init: si el repo cambió después del preview, apply se niega y no escribe nada (stale-preview)', stale.code === 1 && /stale-preview/.test(stale.out) && !fs.existsSync(path.join(ip, 'docs', 'STATE.md')));
+  const pv2 = J(N(ip, IN, ['preview', '--plan', planF]));
+  const iap = J(N(ip, IN, ['apply', '--plan', planF, '--expect', pv2.stamp]));
   const cm = fs.readFileSync(path.join(ip, 'CLAUDE.md'), 'utf8');
-  check('project-init: aplica sin pisar el texto propio y con scripts reales', cm.includes('Texto propio.') && cm.includes('npm run test') && !cm.includes('npm run lint:') && fs.existsSync(path.join(ip, 'docs', 'STATE.md')) && fs.readFileSync(path.join(ip, '.gitignore'), 'utf8').includes('.claude/.feature-flow/'));
-  N(ip, IN, ['--apply']);
-  check('project-init: es idempotente', (fs.readFileSync(path.join(ip, 'CLAUDE.md'), 'utf8').match(/commands:start/g) || []).length === 1);
-  check('project-init: sin --settings no crea .claude/settings.json', !fs.existsSync(path.join(ip, '.claude', 'settings.json')));
+  check('init: aplica sin pisar el texto propio y con scripts reales', iap.ok && cm.includes('Texto propio.') && cm.includes('Cambio después del preview.') && cm.includes('npm run test') && !cm.includes('npm run lint:') && fs.existsSync(path.join(ip, 'docs', 'STATE.md')) && fs.readFileSync(path.join(ip, '.gitignore'), 'utf8').includes('.claude/.feature-flow/'));
+  check('init: .private-terms queda local e ignorado, y fuera del commit propuesto', spawnSync('git', ['check-ignore', '-q', '.private-terms'], { cwd: ip }).status === 0 && iap.nextCommit && iap.nextCommit.branch === 'chore/dev-flow-init' && !iap.nextCommit.files.includes('.private-terms') && iap.nextCommit.files.includes('CLAUDE.md'));
+  check('init: es idempotente (un segundo preview no tiene nada para hacer)', J(N(ip, IN, ['preview', '--plan', planF])).steps.every((x) => x.status === 'nothing'));
+  iplan(['private-terms'], { privateTerms: ['ab'] });
+  check('init: un término privado demasiado corto se rechaza', J(N(ip, IN, ['preview', '--plan', planF])).steps[0].status === 'refused');
+  iplan(['tech-lead'], { mode: 'features' });
+  check('init: el paso tech-lead exige el modo tech-lead', J(N(ip, IN, ['preview', '--plan', planF])).steps[0].status === 'refused');
+  check('init: sin el paso settings no crea .claude/settings.json', !fs.existsSync(path.join(ip, '.claude', 'settings.json')));
   fs.mkdirSync(path.join(ip, '.claude')); fs.writeFileSync(path.join(ip, '.claude', 'settings.json'), JSON.stringify({ permissions: { allow: ['Bash(npm test)'] }, enabledPlugins: { 'guard@ai-env': false } }));
-  N(ip, IN, ['--apply', '--settings', '--ci']);
+  iplan(['settings', 'ci']);
+  const ihome = fs.mkdtempSync(path.join(os.tmpdir(), 'kit-pi-ihome-'));
+  const iap2 = J(N(ip, IN, ['apply', '--plan', planF, '--expect', J(N(ip, IN, ['preview', '--plan', planF])).stamp], { AI_ENV_HOME: ihome }));
   const pset = JSON.parse(fs.readFileSync(path.join(ip, '.claude', 'settings.json'), 'utf8'));
-  check('project-init: --settings declara marketplace y plugins sin pisar lo que había', pset.extraKnownMarketplaces['ai-env'].source.repo.endsWith('/ai-env') && pset.extraKnownMarketplaces['ai-env'].autoUpdate === true && pset.enabledPlugins['dev-flow@ai-env'] === true && pset.enabledPlugins['arch@ai-env'] === true && pset.enabledPlugins['guard@ai-env'] === false && pset.permissions.allow.length === 1);
-  check('project-init: --ci agrega los workflows y el de arquitectura trae el verificador del plugin', fs.existsSync(path.join(ip, '.github', 'workflows', 'security.yml')) && fs.readFileSync(path.join(ip, '.github', 'workflows', 'architecture.yml'), 'utf8').includes('plugins/arch/skills/arch-first/scripts/arch-check.cjs'));
-  const det2 = JSON.parse(N(ip, path.join(A, 'project-init', 'scripts', 'detect.cjs')).out);
-  check('project-init: detect informa los plugins activos del repo', det2.projectPlugins.includes('dev-flow@ai-env') && !det2.projectPlugins.includes('guard@ai-env'));
-  fs.rmSync(ip, { recursive: true, force: true });
+  check('init: settings declara marketplace y plugins sin pisar lo que había', pset.extraKnownMarketplaces['ai-env'].source.repo.endsWith('/ai-env') && pset.extraKnownMarketplaces['ai-env'].autoUpdate === true && pset.enabledPlugins['dev-flow@ai-env'] === true && pset.enabledPlugins['arch@ai-env'] === true && pset.enabledPlugins['guard@ai-env'] === false && pset.permissions.allow.length === 1);
+  check('init: respalda fuera del repo el archivo que modifica', iap2.notes && iap2.notes.some((n) => n.includes(ihome)) && fs.existsSync(path.join(ihome, '.claude', 'ai-env', 'init-backup')));
+  check('init: ci agrega los workflows y el de arquitectura trae el verificador del plugin', fs.existsSync(path.join(ip, '.github', 'workflows', 'security.yml')) && fs.readFileSync(path.join(ip, '.github', 'workflows', 'architecture.yml'), 'utf8').includes('plugins/arch/skills/arch-first/scripts/arch-check.cjs'));
+  const det2 = J(N(ip, IN, ['detect']));
+  check('init: detect informa los plugins activos del repo', det2.detection.projectPlugins.includes('dev-flow@ai-env') && !det2.detection.projectPlugins.includes('guard@ai-env'));
+  check('init: verify da OK con lo escrito', N(ip, IN, ['verify']).code === 0);
+  fs.writeFileSync(path.join(ip, '.claude', 'settings.json'), '{ roto');
+  check('init: verify marca FALLA con un JSON roto (exit 1)', N(ip, IN, ['verify']).code === 1);
+  const ib = fs.mkdtempSync(path.join(os.tmpdir(), 'kit-pi-blank-'));
+  spawnSync('git', ['init', '-q'], { cwd: ib }); fs.writeFileSync(path.join(ib, 'README.md'), '# Idea\n');
+  const db = J(N(ib, IN, ['detect']));
+  check('init: un repo con solo documentos es "vacío" y recomienda solo las bases', db.blank === true && db.summary.mode === 'blank' && JSON.stringify(db.summary.recommended.features) === JSON.stringify(['gitignore', 'claude-md', 'state']));
+  check('init: fuera de un repo git se niega con una alternativa', N(os.tmpdir(), IN, ['detect']).code === 1 && /git init/.test(lastOut));
+  for (const d of [ip, ib, ihome]) fs.rmSync(d, { recursive: true, force: true });
+  fs.rmSync(planF, { force: true });
 } else add('AVISO', 'arch-first y compañía no probadas', 'faltan skills o git');
 
 // --- setup y doctor (lo que el plugin no puede instalar solo)
@@ -569,7 +598,7 @@ if (fs.existsSync(SU) && fs.existsSync(DR)) {
 const fm = (p) => fs.existsSync(p) && fs.readFileSync(p, 'utf8').replace(/^\uFEFF/, '').startsWith('---');
 const expected = {
   'arch': ['arch-first', 'adr'],
-  'dev-flow': ['feature-flow', 'feature-run', 'feature-close', 'quick-fix', 'budget-plan', 'spec-interview', 'pr-prep', 'security-diff', 'project-init', 'setup', 'doctor', 'prd', 'ticket', 'dispatch', 'audit'],
+  'dev-flow': ['feature-flow', 'feature-run', 'feature-close', 'quick-fix', 'budget-plan', 'spec-interview', 'pr-prep', 'security-diff', 'init', 'setup', 'doctor', 'prd', 'ticket', 'dispatch', 'audit'],
   'app-review': ['app-architecture-review', 'api-call-rules', 'frontend-rules'],
   'cloud-ops': ['context-ledger', 'azure-claim-check', 'client-deliverables', 'deliverable-review', 'azure-inventory-kql', 'iac-change-review'],
   'front-studio': ['redesign', 'brand-intake', 'product-map', 'design-direction', 'live-preview', 'react-port', 'ui-review', 'security-reaudit', 'style-quiz', 'page-kit', 'ui-options', 'preview-setup'],

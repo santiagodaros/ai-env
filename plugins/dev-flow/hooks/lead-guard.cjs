@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // PreToolUse (Edit|Write|MultiEdit|NotebookEdit): en modo Tech Lead, la sesión principal no edita código.
-// Se activa con {"lead": {"enforce": true}} en .claude/dev-flow.json (lo pone project-init --agents).
+// Se activa con {"lead": {"enforce": true}} en .claude/dev-flow.json (lo pone /dev-flow:init en modo Tech Lead).
 // - Bloquea editar archivos de código (y sus pruebas) en el checkout principal del repo.
 // - Permite docs, PRD, estado, .claude/, .dev-flow/ y cualquier archivo dentro de un worktree (ahí trabajan los
 //   workers y los subagentes con isolation: worktree). La regla es por ruta: no depende de quién llama.

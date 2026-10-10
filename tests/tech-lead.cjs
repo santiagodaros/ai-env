@@ -1,5 +1,5 @@
 // Pruebas de la forma de trabajo Tech Lead + workers (dev-flow): PRD, tickets, estado, tarjeta, auditoría,
-// honestidad de pruebas, worktrees, dispatch, session-guard, project-init --agents y setup --worktrees.
+// honestidad de pruebas, worktrees, dispatch, session-guard, init en modo Tech Lead y setup --worktrees.
 // Las llama tests/smoke-test.js. GitHub y Claude Code se reemplazan por falsos (no hay red ni sesiones reales).
 'use strict';
 const fs = require('fs');
@@ -212,14 +212,17 @@ console.log(JSON.stringify({type:'result',subtype:'success',is_error:false,total
   check('session-guard: dispatch --launch encadenado con otro comando se bloquea', g(`${DQ} run --issue 12 --role implementer --launch && echo x`).code === 2);
   check('session-guard: un worker no puede usar dispatch --launch', g(`${DQ} run --pr 3 --role auditor --launch`, { FEATURE_FLOW_CHILD: '1' }).code === 2);
 
-  // --- project-init --agents y setup --worktrees
+  // --- init en modo Tech Lead y setup --worktrees
   const r5 = repo('init');
-  const I = K('project-init', 'init.cjs');
-  r = run(I, ['--dir', r5, '--agents', '--apply']);
+  const I = K('init', 'init.cjs');
+  const planF = path.join(tmp, 'init-plan.json');
+  fs.writeFileSync(planF, JSON.stringify({ v: 1, approved: ['gitignore', 'claude-md', 'tech-lead'], answers: { mode: 'tech-lead' } }));
+  const initStamp = JSON.parse(run(I, ['preview', '--plan', planF, '--dir', r5]).out).stamp;
+  r = run(I, ['apply', '--plan', planF, '--expect', initStamp, '--dir', r5]);
   const has = (f) => fs.existsSync(path.join(r5, f));
-  check('project-init --agents: crea dev-flow.json, PRD, ESTADO, CHANGELOG, prompts por rol y .worktreeinclude', r.code === 0 && ['.claude/dev-flow.json', 'docs/PRD.md', 'docs/ESTADO.md', 'docs/CHANGELOG.md', '.claude/prompts/implementer.md', '.claude/prompts/auditor.md', '.worktreeinclude'].every(has) && !has('docs/STATE.md'));
-  check('project-init --agents: CLAUDE.md describe el flujo y .gitignore excluye .dev-flow/', /<!-- agents:start -->/.test(fs.readFileSync(path.join(r5, 'CLAUDE.md'), 'utf8')) && /^\.dev-flow\/$/m.test(fs.readFileSync(path.join(r5, '.gitignore'), 'utf8')));
-  check('project-init --agents: es idempotente', /nada: el repo ya tiene todo esto/.test(run(I, ['--dir', r5, '--agents']).out));
+  check('init (Tech Lead): crea dev-flow.json, PRD, ESTADO, CHANGELOG, prompts por rol y .worktreeinclude', r.code === 0 && ['.claude/dev-flow.json', 'docs/PRD.md', 'docs/ESTADO.md', 'docs/CHANGELOG.md', '.claude/prompts/implementer.md', '.claude/prompts/auditor.md', '.worktreeinclude', 'AGENTS.md'].every(has) && !has('docs/STATE.md'), r.out.slice(0, 300));
+  check('init (Tech Lead): CLAUDE.md describe el flujo e importa AGENTS.md, y .gitignore excluye .dev-flow/', /<!-- agents:start -->/.test(fs.readFileSync(path.join(r5, 'CLAUDE.md'), 'utf8')) && /@AGENTS\.md/.test(fs.readFileSync(path.join(r5, 'CLAUDE.md'), 'utf8')) && /^\.dev-flow\/$/m.test(fs.readFileSync(path.join(r5, '.gitignore'), 'utf8')));
+  check('init (Tech Lead): es idempotente', JSON.parse(run(I, ['preview', '--plan', planF, '--dir', r5]).out).steps.every((x) => x.status === 'nothing'));
   const RH = path.join(DF, 'hooks', 'rehydrate.cjs');
   write(r5, 'docs/ESTADO.md', '# Estado\n- decisión ESTADO-XYZ\n');
   let x = spawnSync(process.execPath, [RH], { input: JSON.stringify({ source: 'compact', cwd: r5 }), encoding: 'utf8', env: { ...process.env, AI_ENV_HOME: tmp, CLAUDE_PROJECT_DIR: r5 } });

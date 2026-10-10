@@ -41,7 +41,7 @@ Si instalaste a mano, una vez por máquina dentro de Claude Code:
 /dev-flow:doctor    # diagnóstico: qué está activo y qué falta
 ```
 
-Y una vez por repo: `/dev-flow:project-init`. Con `--settings` deja el marketplace y los plugins declarados en `.claude/settings.json`, así cargan solos para quien clone el repo y confíe en la carpeta.
+Y una vez por repo: `/dev-flow:init`. Detecta el stack, te muestra en una pantalla qué va a escribir y aplica solo con tu sí, contra esa misma vista previa. Si el repo lo usa más gente, deja el marketplace y los plugins declarados en `.claude/settings.json`, así cargan solos para quien lo clone y confíe en la carpeta.
 
 **Versiones y actualizaciones.** Cada plugin tiene su versión (`x.y.z`) y cada publicación su tag `<plugin>--v<versión>`. Recibís una actualización cuando sube la versión, nunca por un commit a medio hacer. Claude Code trae la actualización automática apagada para marketplaces de terceros; el instalador (o `/dev-flow:setup`) la enciende. A mano: `claude plugin marketplace update ai-env` y `claude plugin update <plugin>@ai-env`. Qué cambió en cada versión: [`CHANGELOG.md`](CHANGELOG.md).
 
@@ -63,10 +63,10 @@ Cada plugin tiene su propio README con el detalle de skills, hooks, configuraci�
 | Momento | Qué hacer |
 |---|---|
 | Máquina nueva | El instalador. Después, `/dev-flow:doctor` |
-| Repo nuevo o recién clonado | `/dev-flow:project-init` (con `--settings` deja los plugins declarados para quien clone el repo) |
+| Repo nuevo o recién clonado | `/dev-flow:init` (detecta, muestra la vista previa y aplica con tu sí; puede dejar los plugins declarados para quien clone el repo) |
 | Programa, página o automatización nueva | `/arch:arch-first`: no se escribe código hasta que apruebes la arquitectura |
 | Feature | `/dev-flow:feature-run`. Al abrir una sesión en su rama, Claude ya sabe la etapa y el paso siguiente |
-| Trabajar como orquestador (Tech Lead + workers) | Una vez: `/dev-flow:project-init` con `--agents` y `/dev-flow:setup --worktrees`. Después, `/dev-flow:dispatch`: PRD → tickets → workers → auditoría |
+| Trabajar como orquestador (Tech Lead + workers) | Una vez: `/dev-flow:init` en modo Tech Lead y `/dev-flow:setup --worktrees`. Después, `/dev-flow:dispatch`: PRD → tickets → workers → auditoría |
 | Arreglo puntual | `/dev-flow:quick-fix` |
 | Cambio de infraestructura | Pedilo normalmente: `iac-change-review` resume el plan antes de aplicar e `iac-verify` valida al terminar |
 | UI existente para criticar o rediseñar | `/front-studio:ui-options`: puntajes, plan de trabajo con issues y tres direcciones más la estándar |
@@ -92,7 +92,7 @@ Variables de entorno del proceso de Claude Code (no de los comandos que corre Cl
 | Permisos (`deny`) | No se distribuyen por plugin | Los hooks `secret-read` y `bash-guard` |
 | `.claude/launch.json` (panel de preview) | Es configuración por proyecto | `/front-studio:preview-setup` lo genera |
 | Hook `WorktreeCreate` para `claude -w` | Un hook de plugin solo aplica a subagentes; el flag `-w` lee los de settings | `/dev-flow:setup --worktrees`; `dispatch` lo pasa con `--settings` |
-| `CLAUDE.md` y `rules/` | Un `CLAUDE.md` en la raíz del plugin no se carga | Las reglas son skills con `paths`; `project-init` completa el `CLAUDE.md` del repo. Ejemplos en `docs/examples/` |
+| `CLAUDE.md` y `rules/` | Un `CLAUDE.md` en la raíz del plugin no se carga | Las reglas son skills con `paths`; `init` completa el `CLAUDE.md` del repo. Ejemplos en `docs/examples/` |
 
 ## Verificación
 

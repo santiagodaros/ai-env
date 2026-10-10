@@ -12,22 +12,22 @@ Requiere el plugin [`arch`](../arch/README.md), que se instala solo como depende
 
 | Situación | Skill |
 |---|---|
-| Repo nuevo o recién clonado | `/dev-flow:project-init` |
+| Repo nuevo o recién clonado | `/dev-flow:init` |
 | Programa, página o automatización nueva | `/arch:arch-first` |
 | Feature | `/dev-flow:feature-run` (de corrido) o `/dev-flow:feature-flow` (paso a paso) |
 | Arreglo puntual | `/dev-flow:quick-fix` |
-| Trabajás como orquestador (PRD → tickets → workers → auditoría) | `/dev-flow:project-init` con `--agents`, después `/dev-flow:dispatch` |
+| Trabajás como orquestador (PRD → tickets → workers → auditoría) | `/dev-flow:init` en modo Tech Lead, después `/dev-flow:dispatch` |
 | Algo no se comporta como esperás | `/dev-flow:doctor` |
 
 No hace falta recordar la etapa: al abrir una sesión en la rama o worktree de una feature, el hook `rehydrate` inyecta el contexto, dice en qué etapa está y cuál es el paso siguiente.
 
 ## Skills
 
-Todas las skills son manuales. Orden típico: `project-init` → `arch:arch-first` → `feature-flow` o `feature-run` → `feature-close` → `pr-prep`. Para un arreglo puntual, `quick-fix`.
+Todas las skills son manuales. Orden típico: `init` → `arch:arch-first` → `feature-flow` o `feature-run` → `feature-close` → `pr-prep`. Para un arreglo puntual, `quick-fix`.
 
 | Skill | Activación | Qué hace |
 |---|---|---|
-| `project-init` | manual | Repo nuevo o clonado: detecta stack y scripts reales, completa `CLAUDE.md`, `docs/STATE.md` y `.gitignore` sin pisar nada, con `--settings` deja declarados el marketplace y los plugins en `.claude/settings.json` (cargan solos para quien clone el repo), con `--ci` agrega los workflows, y encadena `arch-first` |
+| `init` | manual | Repo nuevo o clonado, con la forma del init de Pignolo: `detect` (solo lee), una pantalla con lo encontrado, lo que va a escribir y lo que falta; `preview` con un sello y `apply --expect <sello>`, que se niega si el plan o el repo cambiaron; `verify`; commit propuesto en `chore/dev-flow-init`. Pasos: `.gitignore`, `CLAUDE.md` con los scripts reales, `docs/STATE.md` o el modo Tech Lead, `.private-terms` local, plugins declarados para el equipo y CI opcional. Nunca pisa nada; respalda lo que modifica. Encadena `arch-first` |
 | `feature-flow` | manual | Parte un trabajo grande en hasta 3 features, crea `docs/features/<slug>/` con `SPEC.md`, `STATE.md` y `HANDOFF.md`, y te da el comando para retomarla en una sesión nueva. Abrir sesiones en segundo plano es opcional y tiene límites duros (ver abajo) |
 | `feature-run` | manual | Orquesta una feature de punta a punta: presupuesto, SPEC aprobado, implementación, pruebas, cierre con documentos y `PR.md`. `stage.cjs` dice en qué etapa está mirando archivos y git, así que se puede reanudar. Paradas: SPEC sin aprobar, sin presupuesto, tests rojos tras 2 intentos, push o PR sin tu sí |
 | `spec-interview` | manual | Te entrevista para definir una feature grande y escribe un `SPEC.md` autocontenido antes de implementar |
@@ -84,7 +84,7 @@ La sesión principal orquesta y no escribe código de aplicación. El ciclo, con
 
 Los roles son también subagentes del plugin (`dev-flow:implementer`, `auditor`, `sre`, `docs`, `explorer`) para delegar algo chico sin abrir sesiones; los explorers se lanzan varios en paralelo y devuelven solo la ruta de sus hallazgos. Reglas del proyecto por rol en `.claude/prompts/<rol>.md` (se suman). Verificado de punta a punta con Claude Code 2.1.296 en Linux (implementador → tarjeta → PR → auditor, US$ 0,99 en total para un ticket chico).
 
-Configuración del repo en `.claude/dev-flow.json` (la crea `project-init --agents`): `prd`, `state` (p. ej. `docs/ESTADO.md`), `worktrees.root` (p. ej. `~/worktrees`), `launch` (topes), `workers` (`mode`, `permissionMode` —por defecto `auto`: el clasificador aprueba lo seguro y los hooks de `guard` siguen frenando lo peligroso; con `acceptEdits` los comandos compuestos se deniegan—, `allowedTools`, `maxTurns`), `testCommand`, `labels`. Lo que generan las corridas va a `.dev-flow/` (ignorado por git; fuera de `.claude/`, que Claude Code protege de escrituras).
+Configuración del repo en `.claude/dev-flow.json` (la crea `/dev-flow:init` en modo Tech Lead): `prd`, `state` (p. ej. `docs/ESTADO.md`), `worktrees.root` (p. ej. `~/worktrees`), `launch` (topes), `workers` (`mode`, `permissionMode` —por defecto `auto`: el clasificador aprueba lo seguro y los hooks de `guard` siguen frenando lo peligroso; con `acceptEdits` los comandos compuestos se deniegan—, `allowedTools`, `maxTurns`), `testCommand`, `labels`. Lo que generan las corridas va a `.dev-flow/` (ignorado por git; fuera de `.claude/`, que Claude Code protege de escrituras).
 
 ## Sesiones por feature sin abusar
 

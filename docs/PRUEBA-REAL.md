@@ -87,9 +87,10 @@ Esperado: rechaza si quedan "(completar)" o cero puertos; con el diseño complet
 |---|---|---|
 | 4.5 | Repetí 4.3 | Ahora **se permite** |
 | 4.6 | "En `src/domain/saludo.ts` importá `fs`" | **Bloqueado** por la regla de dependencia |
-| 4.7 | `/dev-flow:project-init` y aceptá `--settings` | Crea `docs/STATE.md`, completa `.gitignore` y declara los plugins en `.claude/settings.json` |
+| 4.7 | `/dev-flow:init`; elegí **Por features**, decí que el repo lo usa más gente y poné un término privado de prueba | Una sola pantalla con lo encontrado y lo que va a escribir, y las opciones Aplicar / Revisar / Cancelar. Al aplicar: `docs/STATE.md`, `.gitignore`, bloque de comandos en `CLAUDE.md`, plugins en `.claude/settings.json` y `.private-terms` sin seguimiento en `git status`. Propone el commit en `chore/dev-flow-init` y no lo hace sin tu sí |
+| 4.7b | Corré `/dev-flow:init` otra vez; en otra, editá `CLAUDE.md` entre la vista previa y el sí | La segunda vez no hay nada para hacer. Si el repo cambió después de la vista previa, `apply` se niega (`stale-preview`) y muestra la vista previa nueva |
 
-- [ ] 4.1  - [ ] 4.2  - [ ] 4.3  - [ ] 4.4  - [ ] 4.5  - [ ] 4.6  - [ ] 4.7
+- [ ] 4.1  - [ ] 4.2  - [ ] 4.3  - [ ] 4.4  - [ ] 4.5  - [ ] 4.6  - [ ] 4.7  - [ ] 4.7b
 
 ## 4b. Camino corto
 
@@ -156,7 +157,7 @@ claude
 
 | # | Qué hacer | Esperado |
 |---|---|---|
-| 5c.1 | `/dev-flow:project-init` y aceptá `--agents` | Crea `.claude/dev-flow.json`, `docs/PRD.md`, `docs/ESTADO.md`, `docs/CHANGELOG.md`, `.claude/prompts/` y el bloque de CLAUDE.md |
+| 5c.1 | `/dev-flow:init` y elegí **Tech Lead + workers** | Crea `.claude/dev-flow.json`, `docs/PRD.md`, `docs/ESTADO.md`, `docs/CHANGELOG.md`, `.claude/prompts/` y el bloque de CLAUDE.md |
 | 5c.2 | `/dev-flow:setup --worktrees` | Registra el hook de worktrees en tus settings; `/dev-flow:doctor` lo muestra en OK |
 | 5c.3 | En otra terminal: `claude -w feat-1-prueba` y adentro `pwd` y `git branch --show-current` | `C:\Users\<vos>\worktrees\ai-env-tl-test\feat-1-prueba` y rama `feat/1-prueba` |
 | 5c.4 | Completá F-01 del PRD (una función chica con 2 criterios) y pedí: "creá el ticket de F-01" | `ticket.cjs create F-01`: issue con la rebanada, criterios y etiquetas `prd:F-01`, `estado:listo` |

@@ -95,9 +95,9 @@ add(sw.some((s) => /^AI_ENV_HOOKS=(off|0|false|no)$/i.test(s)) ? 'AVISO' : 'INFO
 const has = (f) => fs.existsSync(path.join(cwd, f));
 if (!has('.git')) add('INFO', 'esta carpeta no es la raíz de un repo git', cwd);
 else {
-  add(has('docs/STATE.md') ? 'OK' : 'INFO', 'docs/STATE.md', has('docs/STATE.md') ? '' : 'falta: /dev-flow:project-init');
+  add(has('docs/STATE.md') ? 'OK' : 'INFO', 'docs/STATE.md', has('docs/STATE.md') ? '' : 'falta: /dev-flow:init');
   const gi = has('.gitignore') ? fs.readFileSync(path.join(cwd, '.gitignore'), 'utf8') : '';
-  add(gi.includes('.claude/.feature-flow/') ? 'OK' : 'AVISO', '.gitignore cubre el estado local', gi.includes('.claude/.feature-flow/') ? '' : 'falta .claude/.feature-flow/: /dev-flow:project-init');
+  add(gi.includes('.claude/.feature-flow/') ? 'OK' : 'AVISO', '.gitignore cubre el estado local', gi.includes('.claude/.feature-flow/') ? '' : 'falta .claude/.feature-flow/: /dev-flow:init');
   const pkg = json(path.join(cwd, 'package.json'));
   if (pkg) { const miss = ['typecheck', 'lint', 'test'].filter((s) => !(pkg.scripts && pkg.scripts[s])); add(miss.length ? 'AVISO' : 'OK', 'scripts de verificación', miss.length ? `faltan: ${miss.join(', ')} (stop-verify y feature-close no verifican lo que no existe)` : 'typecheck, lint, test'); }
   if (has('architecture.json')) {

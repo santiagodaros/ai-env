@@ -46,7 +46,7 @@ function runTests(cwd, cfg) {
 function checkConfigAndPrd(root, cfg) {
   const cf = path.join(root, '.claude', 'dev-flow.json');
   if (fs.existsSync(cf)) { try { JSON.parse(fs.readFileSync(cf, 'utf8')); add('C1', 'OK', 'configuración válida', '.claude/dev-flow.json'); } catch (e) { add('C1', 'FALLA', 'configuración inválida', `.claude/dev-flow.json: ${e.message}`); } }
-  else add('C1', 'AVISO', 'sin .claude/dev-flow.json', 'se usan los valores por defecto (project-init --agents lo crea)');
+  else add('C1', 'AVISO', 'sin .claude/dev-flow.json', 'se usan los valores por defecto (/dev-flow:init en modo Tech Lead lo crea)');
   if (fs.existsSync(path.join(root, cfg.prd))) {
     const r = prd.check(root, cfg.prd);
     add('C1', r.errors.length ? 'FALLA' : 'OK', 'PRD sin ids repetidos ni citas rotas', r.errors.length ? r.errors.slice(0, 3).join('; ') : `${r.sections} secciones${r.warnings.length ? `; ${r.warnings.length} aviso(s)` : ''}`);
