@@ -125,7 +125,7 @@ function ancestors() {
 }
 
 function killInside(dir, dryRun = false) {
-  const target = path.resolve(dir);
+  const target = real(dir);
   const killed = [];
   if (process.platform === 'win32') {
     // Se excluyen el propio proceso y su cadena de padres (Claude Code) con ParentProcessId.
@@ -152,7 +152,14 @@ function killInside(dir, dryRun = false) {
       }
     } else {
       const r = spawnSync('ps', ['-axo', 'pid=,command='], { encoding: 'utf8' });
-      for (const l of (r.stdout || '').split('\n')) { const m = l.trim().match(/^(\d+)\s+(.*)$/); if (m && m[2].includes(target) && !skip.has(Number(m[1]))) pids.add(Number(m[1])); }
+      for (const l of (r.stdout || '').split('\n')) { const m = l.trim().match(/^(\d+)\s+(.*)$/); if (m && (m[2].includes(target) || m[2].includes(path.resolve(dir))) && !skip.has(Number(m[1]))) pids.add(Number(m[1])); }
+      // macOS: directorio de trabajo de cada proceso con lsof (p<pid> / n<ruta>).
+      const lo = spawnSync('lsof', ['-a', '-d', 'cwd', '-Fpn'], { encoding: 'utf8', timeout: 20000 });
+      let pid = null;
+      for (const l of (lo.stdout || '').split('\n')) {
+        if (l.startsWith('p')) pid = Number(l.slice(1));
+        else if (l.startsWith('n') && pid && !skip.has(pid)) { const cwd = l.slice(1); if (cwd === target || cwd.startsWith(target + path.sep)) pids.add(pid); }
+      }
     }
     if (dryRun) return [...pids].map(String);
     for (const pid of pids) { try { process.kill(pid, 'SIGTERM'); killed.push(String(pid)); } catch { /* ya terminó */ } }
