@@ -2,6 +2,10 @@
 
 Cada plugin tiene su versión y cada publicación su tag `<plugin>--v<versión>`. Acá va lo que cambia para quien los usa.
 
+## 2026-10-11 — dev-flow 2.4.0
+
+- dispatch: el tamaño L sube a opus solo al implementer (docs sigue en haiku y sre en sonnet, con turnos y esfuerzo de L); si un lote no entra, informa cuántos tickets más entrarían con los implementers L en sonnet y lo aplica solo con --allow-downgrade-implementer. El auditor nunca baja de modelo
+
 ## 2026-10-10 — dev-flow 2.3.0
 
 - init brownfield: frena si va a tocar archivos con cambios sin commitear, rollback automático, .gitattributes y .editorconfig si faltan, huecos del arnés y plan de higiene, pruebas con CI=1 y pre-commit nativo opcional (secscan y arch-check)

@@ -210,7 +210,12 @@ function buildLaunch(root, cfg, role, ctx, mode, base) {
   if (!SIZES[size]) fail('--size es T, S, M o L.');
   const sz = { ...SIZES[size], ...((W.sizes || {})[size] || {}) };
   const def = roleDef(role, root);
-  const model = get('--model') || (role !== 'auditor' && sz.model) || (W.models || {})[role] || (role === 'auditor' ? def.model : MODELS[role]) || def.model;
+  // El modelo del tamaño (L → opus) es solo del implementer: docs y sre escalan turnos y esfuerzo, no de modelo.
+  // El auditor siempre usa el de su definición. ctx.downgrade (--allow-downgrade-implementer) deja al implementer en su modelo de tabla.
+  const tableModel = (W.models || {})[role] || (role === 'auditor' ? def.model : MODELS[role]) || def.model;
+  const sizeModel = role === 'implementer' && !get('--model') ? sz.model : null;
+  const model = get('--model') || (sizeModel && !ctx.downgrade ? sizeModel : null) || tableModel;
+  const downgradable = !!sizeModel && sizeModel !== tableModel;
   const maxTurns = Number(get('--max-turns') || (role === 'auditor' ? def.maxTurns : sz.maxTurns) || W.maxTurns || 80);
   const effort = role === 'auditor' ? 'high' : sz.effort;
   const id = `${new Date().toISOString().replace(/[-:]/g, '').slice(0, 13)}-${key}`;
@@ -229,7 +234,7 @@ function buildLaunch(root, cfg, role, ctx, mode, base) {
   const args = mode === 'headless'
     ? ['-p', ...common, ...perms, '--output-format', 'json', '--json-schema', schemaArg(role === 'auditor'), '--max-turns', String(maxTurns)]
     : ['--bg', ...common, ...perms, '-n', name, `Leé tus instrucciones en ${path.join(runDir, 'prompt.md')} y seguilas.`];
-  return { key, id, runDir, ticketN, ticketDir, text, args, name, size, model, maxTurns, effort, sessionId, files: sc.files };
+  return { key, id, runDir, ticketN, ticketDir, text, args, name, size, model, maxTurns, effort, sessionId, files: sc.files, downgradable, downgraded: !!ctx.downgrade && downgradable, fromModel: sizeModel, tableModel };
 }
 
 function settingsFor(toolsDir) {
@@ -247,7 +252,7 @@ function spawnWorker(root, L, mode, role, issue, pr, cwd, extra = {}) {
   const env = { ...process.env, FEATURE_FLOW_CHILD: '1', DEV_FLOW_ROLE: role, DEV_FLOW_RUN: L.id, ...(L.ticketN ? { DEV_FLOW_TICKET: String(L.ticketN), DEV_FLOW_DOSSIER: L.ticketDir } : {}) };
   const [exe, ...pre] = claudeCmd();
   const pluginVersion = (readJson(path.join(PLUGIN, '.claude-plugin', 'plugin.json')) || {}).version;
-  const meta = { id: L.id, role, mode, key: L.key, kind: 'worker', issue: issue ? issue.number : null, pr: pr ? pr.number : null, worktree: L.name, runDir: L.runDir, ticketDir: L.ticketDir, size: L.size, model: L.model || null, maxTurns: L.maxTurns, session: L.sessionId, pluginVersion, at: Date.now(), ...extra };
+  const meta = { id: L.id, role, mode, key: L.key, kind: 'worker', issue: issue ? issue.number : null, pr: pr ? pr.number : null, worktree: L.name, runDir: L.runDir, ticketDir: L.ticketDir, size: L.size, model: L.model || null, ...(L.downgraded ? { downgradedFrom: L.fromModel } : {}), maxTurns: L.maxTurns, session: L.sessionId, pluginVersion, at: Date.now(), ...extra };
   if (mode === 'headless') {
     const out = fs.openSync(path.join(L.runDir, 'out.json'), 'w'), errf = fs.openSync(path.join(L.runDir, 'err.log'), 'w');
     const inp = fs.openSync(path.join(L.runDir, 'prompt.md'), 'r');
@@ -330,7 +335,22 @@ function run() {
     for (const L of launches.slice(1)) if (reg.some((r) => (r.key || r.slug) === L.key && Date.now() - r.at < 86400000)) fail(`"${L.key}" ya se lanzó en las últimas 24 h.`);
   }
   // Presupuesto del LOTE completo (antes se miraba solo el primer worker): entran k de n; el resto queda en cola.
-  const b = budgetBatch(root, role, launches, c0.info.running.total);
+  if (has('--allow-downgrade-implementer') && role !== 'implementer') fail('--allow-downgrade-implementer solo aplica a implementers: el auditor, sre y docs no cambian de modelo.');
+  let b = budgetBatch(root, role, launches, c0.info.running.total);
+  if (b.launchable < launches.length && launches.some((L) => L.downgradable)) {
+    // Alternativa informativa: los implementers que el tamaño subió a otro modelo, en su modelo de tabla. El auditor no cambia.
+    const to = launches.find((L) => L.downgradable).tableModel;
+    const alt = budgetBatch(root, role, launches, c0.info.running.total, { model: to });
+    const n = launches.filter((L) => L.downgradable).length;
+    if (alt.perWorker === null) console.log(`Alternativa: bajar ${n} implementer(s) de ${launches.find((L) => L.downgradable).fromModel} a ${to} no se puede estimar todavía (hacen falta 3 corridas solas de implementer en ${to}). El auditor no cambia.`);
+    else if (alt.launchable <= b.launchable) console.log(`Alternativa: bajar los implementers a ${to} no hace entrar más tickets (entran ${alt.launchable} de ${launches.length} igual). El auditor no cambia.`);
+    else if (has('--allow-downgrade-implementer')) {
+      ctxs.forEach((c, i) => { if (launches[i].downgradable) c.downgrade = true; });
+      launches.splice(0, launches.length, ...ctxs.map((c) => buildLaunch(root, cfg, role, c, mode, base)));
+      b = alt;
+      console.log(`--allow-downgrade-implementer: ${n} implementer(s) bajan a ${to} para este lote (entran ${alt.launchable} de ${launches.length}). Turnos y esfuerzo siguen los del tamaño. El auditor no cambia: sigue en su modelo.`);
+    } else console.log(`Alternativa: con los ${n} implementer(s) de tamaño L en ${to} en vez de ${launches.find((L) => L.downgradable).fromModel}, entrarían ${alt.launchable - b.launchable} ticket(s) más (${alt.launchable} de ${launches.length}). El auditor no cambia. Para aplicarlo, repetí con --allow-downgrade-implementer.`);
+  }
   if (b.launchable === 0) fail(b.text);
   if (b.launchable < launches.length) {
     const queued = launches.slice(b.launchable).map((L) => L.ticketN).filter(Boolean);
@@ -340,7 +360,7 @@ function run() {
   }
   for (const L of launches) {
     const c = ctxs[launches.indexOf(L)];
-    console.log(`Worker: ${role} ${role === 'auditor' ? `PR #${c.pr.number}` : `#${c.issue.number}`} (${mode}, tamaño ${L.size}, modelo ${L.model || 'por defecto'}, ${L.maxTurns} turnos${L.effort ? `, esfuerzo ${L.effort}` : ''})`);
+    console.log(`Worker: ${role} ${role === 'auditor' ? `PR #${c.pr.number}` : `#${c.issue.number}`} (${mode}, tamaño ${L.size}, modelo ${L.model || 'por defecto'}${L.downgraded ? ` (bajado de ${L.fromModel} por presupuesto)` : ''}, ${L.maxTurns} turnos${L.effort ? `, esfuerzo ${L.effort}` : ''})`);
     console.log(`  worktree ${L.name} · corrida ${L.id}${L.files.length ? ` · alcance ${L.files.join(', ')}` : ''}`);
   }
   console.log(`Cupos: ${c0.info.running.total}/${c0.info.maxConcurrent} en segundo plano, ${c0.info.today}/${c0.info.maxPerDay} lanzadas en 24 h, espera mínima ${c0.info.cooldown} min.`);
@@ -418,16 +438,18 @@ function runs(root) {
 const budgetSnap = () => readJson(path.join(process.env.CLAUDE_BUDGET_DIR || path.join(require('os').homedir(), '.claude', '.budget'), 'latest.json'));
 const metricsOf = (root) => read(path.join(root, '.dev-flow', 'metrics.jsonl')).split('\n').map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
 const median = (a) => { const v = [...a].sort((x, y) => x - y); return v.length ? v[Math.floor(v.length / 2)] : null; };
-function budgetBatch(root, role, launches, running) {
-  const M = metricsOf(root).filter((m) => m.role === role && m.durationMs > 0);
+function budgetBatch(root, role, launches, running, opt = {}) {
+  // opt.model: estimar con las corridas medidas en ese modelo (alternativa de bajar implementers).
+  const M = metricsOf(root).filter((m) => m.role === role && m.durationMs > 0 && (!opt.model || m.model === opt.model));
   const minutes = median(M.slice(-20).map((m) => m.durationMs / 60000)) || 15;
   const solo = M.filter((m) => typeof m.deltaPct === 'number' && m.solo).map((m) => m.deltaPct).sort((x, y) => x - y);
   const per = solo.length >= 3 ? solo[Math.min(solo.length - 1, Math.ceil(0.75 * solo.length) - 1)] : null;
+  if (opt.model && per === null) return { launchable: 0, perWorker: null, text: '' };
   const bp = path.join(__dirname, '..', '..', 'budget-plan', 'scripts', 'budget.cjs');
   const args = [bp, 'batch', String(launches.length), '--minutes', String(Math.round(minutes)), '--running', String(running), '--json', ...(per !== null ? ['--per-worker', String(per)] : [])];
   const r = spawnSync(process.execPath, args, { cwd: root, encoding: 'utf8' });
-  try { const j = JSON.parse(r.stdout); return { launchable: Number.isInteger(j.launchable) ? j.launchable : launches.length, text: j.text }; }
-  catch { return { launchable: launches.length, text: 'Presupuesto: sin datos.' }; }
+  try { const j = JSON.parse(r.stdout); return { launchable: Number.isInteger(j.launchable) ? j.launchable : launches.length, perWorker: per, text: j.text }; }
+  catch { return { launchable: launches.length, perWorker: per, text: 'Presupuesto: sin datos.' }; }
 }
 function queueInPlan(root, issues) {
   const f = path.join(root, '.dev-flow', 'plan.json');

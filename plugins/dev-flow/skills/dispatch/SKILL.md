@@ -26,7 +26,9 @@ Scripts: `D="${CLAUDE_PLUGIN_ROOT}/skills/dispatch/scripts"` → `node "$D/dispa
    | M | 1 implementer + 1 auditor | sonnet, 60 turnos |
    | L | 2-3 **explorers** en paralelo (en esta sesión) → 1 implementer → 1 auditor | opus, 100 turnos, esfuerzo alto |
 
-   El auditor usa siempre opus con esfuerzo alto. Ajustable en `workers.sizes` y `workers.models` de `.claude/dev-flow.json`; `--size` y `--model` pisan para una corrida.
+   El modelo de la tabla (opus en L) es solo del implementer: `docs` sigue en haiku y `sre` en sonnet, y en L escalan turnos y esfuerzo. El auditor usa siempre opus con esfuerzo alto. Ajustable en `workers.sizes` y `workers.models` de `.claude/dev-flow.json`; `--size` y `--model` pisan para una corrida.
+
+   Si el lote no entra en el presupuesto y tiene implementers de tamaño L, `dispatch` informa cuántos tickets más entrarían con esos implementers en sonnet (estimado con corridas medidas en sonnet). Es solo información: mostrala tal cual y no la apliques por tu cuenta. Se aplica únicamente si la persona lo pide, repitiendo con `--allow-downgrade-implementer`. El auditor nunca baja de modelo.
 6. **Explorers** (tamaño L o dudas de diseño): lanzalos como subagentes `dev-flow:explorer` **en paralelo, en un mismo mensaje**, cada uno con UNA pregunta acotada y el archivo de salida `.dev-flow/tickets/<N>/explore-<tema>.md`. Su respuesta es solo `done -> ruta`: no les pidas el contenido. El implementer lo encuentra en el expediente. Mantené fresco el mapa del código: `node "${CLAUDE_PLUGIN_ROOT}/skills/dispatch/scripts/codemap.cjs"` (escribe `docs/codemap.md`; el brief del worker trae solo el pedazo de su alcance).
 7. **Lanzar** (siempre primero el dry-run, que muestra cupos, modelo, prompt y comando):
 

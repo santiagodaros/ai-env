@@ -109,7 +109,7 @@ Nunca pisa una clave existente (la informa como conflicto) y respalda el archivo
 | M | Sonnet | 60 | medium |
 | L | Opus | 100 | high |
 
-El auditor corre siempre con Opus. El Tech Lead recibe referencias (una línea y rutas), no contenido de agente en agente.
+El tamaño sube el modelo solo del implementer: `docs` sigue en Haiku y `sre` en Sonnet, y en L escalan turnos y esfuerzo. El auditor corre siempre con Opus. Si un lote no entra en el presupuesto, `dispatch` informa cuántos tickets más entrarían con los implementers L en Sonnet; se aplica solo con `--allow-downgrade-implementer`, y el auditor nunca baja. El Tech Lead recibe referencias (una línea y rutas), no contenido de agente en agente.
 
 **Paradas humanas.** Ningún script las saltea:
 

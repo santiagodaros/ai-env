@@ -249,6 +249,22 @@ console.log(JSON.stringify({type:'result',subtype:'success',is_error:false,total
   fs.writeFileSync(path.join(bdir, 'latest.json'), JSON.stringify({ at: Date.now(), fiveHour: { pct: 95, resetsAt: reset } }));
   r = run(DS, ['run', '--issue', String(byPrd('F-06')), '--role', 'implementer'], { cwd: r4, env: envB });
   check('dispatch: sin margen sobre la reserva no lanza y dice por qué', r.code === 1 && /SIN MARGEN/.test(r.out));
+
+  // El modelo del tamaño L (opus) es solo del implementer: docs sigue en haiku y sre en sonnet; los dos escalan turnos y esfuerzo.
+  fs.writeFileSync(path.join(bdir, 'latest.json'), JSON.stringify({ at: Date.now(), fiveHour: { pct: 60, resetsAt: reset } }));
+  const wl = (role) => (run(DS, ['run', '--issue', String(byPrd('F-06')), '--role', role, '--size', 'L'], { cwd: r4, env: envB }).out.match(/^Worker: .*$/m) || [''])[0];
+  check('dispatch: tamaño L sube a opus solo al implementer', /modelo opus, 100 turnos, esfuerzo high/.test(wl('implementer')), wl('implementer'));
+  check('dispatch: tamaño L deja docs en haiku y sre en sonnet, con 100 turnos y esfuerzo alto', /modelo haiku, 100 turnos, esfuerzo high/.test(wl('docs')) && /modelo sonnet, 100 turnos, esfuerzo high/.test(wl('sre')), `${wl('docs')} | ${wl('sre')}`);
+
+  // Lote que no entra con implementers L en opus: alternativa informativa en sonnet; se aplica solo con el flag.
+  for (let i = 0; i < 3; i++) fs.appendFileSync(path.join(r4, '.dev-flow', 'metrics.jsonl'), JSON.stringify({ run: `son-${i}`, role: 'implementer', model: 'sonnet', durationMs: 600000, deltaPct: 10, solo: true }) + '\n');
+  const lote = ['run', '--issues', `${byPrd('F-06')},${byPrd('F-07')}`, '--role', 'implementer', '--size', 'L'];
+  r = run(DS, lote, { cwd: r4, env: envB });
+  check('dispatch: si el lote no entra, informa cuántos más entrarían con los implementers en sonnet y que el auditor no cambia, sin aplicarlo', r.code === 0 && /entrarían 1 ticket\(s\) más/.test(r.out) && /auditor no cambia/.test(r.out) && /--allow-downgrade-implementer/.test(r.out) && (r.out.match(/^Worker: .*modelo opus/gm) || []).length === 1, r.out.slice(0, 600));
+  r = run(DS, [...lote, '--allow-downgrade-implementer'], { cwd: r4, env: envB });
+  check('dispatch: con --allow-downgrade-implementer entran los 2 en sonnet, con turnos y esfuerzo de L', r.code === 0 && (r.out.match(/^Worker: .*modelo sonnet \(bajado de opus por presupuesto\), 100 turnos, esfuerzo high/gm) || []).length === 2 && !/quedan en cola/.test(r.out), r.out.slice(0, 600));
+  r = run(DS, ['run', '--issue', String(byPrd('F-06')), '--role', 'docs', '--allow-downgrade-implementer'], { cwd: r4, env: envB });
+  check('dispatch: --allow-downgrade-implementer se rechaza fuera del rol implementer', r.code === 1 && /solo aplica a implementers/.test(r.out));
   fs.rmSync(path.join(bdir, 'latest.json'), { force: true });
 
   fs.rmSync(tmp, { recursive: true, force: true });
