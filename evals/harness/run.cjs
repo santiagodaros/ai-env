@@ -5,8 +5,9 @@
 // Uso:
 //   node evals/harness/run.cjs --dry              arma los repos y muestra qué correría (sin claude, sin costo)
 //   node evals/harness/run.cjs [--case <id>]      corre de verdad (cuesta: ~US$ 0,3-1 por caso)
-//   node evals/harness/run.cjs --ablate [--case <id>]   lo mismo sin la definición del rol (agents/*.md) ni el cuerpo de
-//                                                 la skill: un caso que pasa igual sin el arnés no mide al arnés.
+//   node evals/harness/run.cjs --ablate [role] [--case <id>]   lo mismo sin el arnés: sin la definición del rol
+//     (agents/*.md), sin los scripts deterministas en el prompt del worker (con `role`, solo sin el rol) y sin el cuerpo de
+//     la skill. Un caso que pasa igual sin el arnés no mide al arnés.
 // Correrlas antes de cambiar los prompts de los roles (agents/*.md) o el armado del prompt en dispatch.cjs:
 // un cambio chico en el orquestador mueve el comportamiento de los workers de formas que no se anticipan.
 'use strict';
@@ -25,7 +26,8 @@ const TK = path.join(PLUGIN, 'skills', 'ticket', 'scripts', 'ticket.cjs');
 const GHF = path.join(ROOT, 'tests', 'fixtures', 'gh-fake.cjs');
 const argv = process.argv.slice(2);
 const dry = argv.includes('--dry');
-const ablate = argv.includes('--ablate');
+// --ablate (o --ablate all): sin la definición del rol ni los scripts deterministas del prompt; --ablate role: solo sin el rol.
+const ablate = argv.includes('--ablate') ? (argv[argv.indexOf('--ablate') + 1] === 'role' ? 'role' : 'all') : null;
 const only = argv.includes('--case') ? argv[argv.indexOf('--case') + 1] : null;
 const git = (cwd, a) => spawnSync('git', a, { cwd, encoding: 'utf8' });
 const write = (d, f, t) => { fs.mkdirSync(path.dirname(path.join(d, f)), { recursive: true }); fs.writeFileSync(path.join(d, f), t); };
@@ -163,7 +165,7 @@ function fixture(base, c) {
   const state = path.join(d, '.eval-gh.json');
   fs.writeFileSync(path.join(bin, 'gh'), `#!/bin/sh\nexec "${process.execPath}" "${GHF}" "$@"\n`, { mode: 0o755 });
   fs.writeFileSync(path.join(bin, 'gh.cmd'), `@"${process.execPath}" "${GHF}" %*\r\n`);
-  const env = { ...process.env, PATH: bin + path.delimiter + process.env.PATH, AI_ENV_GH: JSON.stringify([process.execPath, GHF]), FAKE_GH_STATE: state, AI_ENV_CLAUDE: JSON.stringify(['claude', ...DEVFLOW]), CLAUDE_BUDGET_DIR: path.join(d, '.sin-budget'), ...(ablate ? { AI_ENV_EVAL_ABLATE: '1' } : {}) };
+  const env = { ...process.env, PATH: bin + path.delimiter + process.env.PATH, AI_ENV_GH: JSON.stringify([process.execPath, GHF]), FAKE_GH_STATE: state, AI_ENV_CLAUDE: JSON.stringify(['claude', ...DEVFLOW]), CLAUDE_BUDGET_DIR: path.join(d, '.sin-budget'), ...(ablate ? { AI_ENV_EVAL_ABLATE: ablate } : {}) };
   const r = spawnSync(process.execPath, [TK, 'create', c.prd], { cwd: d, env, encoding: 'utf8' });
   const issue = Number((r.stdout.match(/Creado #(\d+)/) || [])[1]);
   if (!issue) throw new Error(`ticket create ${c.prd} falló: ${(r.stderr || r.stdout).trim().slice(0, 300)}`);
@@ -304,6 +306,6 @@ const w = Math.max(...results.map((r) => r.id.length));
 for (const r of results) console.log(`${r.ok ? 'PASA ' : 'FALLA'} ${r.id.padEnd(w)}  ${r.detail}${r.cost ? `  (US$ ${Number(r.cost).toFixed(2)}, ${r.turns} turnos, ${r.seconds} s)` : ''}`);
 const cost = results.reduce((a, r) => a + (r.cost || 0), 0);
 console.log(`\n${results.filter((r) => r.ok).length}/${results.length} casos pasan${ablate ? ' SIN el arnés (ablación: lo esperable es que fallen)' : ''}${dry ? ' (dry-run)' : `; US$ ${cost.toFixed(2)} en total`}. Repos en ${base}`);
-if (!dry) { const out = path.join(__dirname, 'results'); fs.mkdirSync(out, { recursive: true }); fs.writeFileSync(path.join(out, `${new Date().toISOString().replace(/[:.]/g, '-')}${ablate ? '-ablacion' : ''}.json`), JSON.stringify(results, null, 2)); }
+if (!dry) { const out = path.join(__dirname, 'results'); fs.mkdirSync(out, { recursive: true }); fs.writeFileSync(path.join(out, `${new Date().toISOString().replace(/[:.]/g, '-')}${ablate ? `-ablacion-${ablate}` : ''}.json`), JSON.stringify(results, null, 2)); }
 else fs.rmSync(base, { recursive: true, force: true });
 process.exit(ablate || results.every((r) => r.ok) ? 0 : 1);

@@ -61,7 +61,7 @@ function roleDef(role, root) {
   const field = (k) => { const x = fm.match(new RegExp(`^${k}:\\s*(.+)$`, 'm')); return x ? x[1].trim() : null; };
   const list = (k) => (field(k) || '').split(',').map((x) => x.trim()).filter(Boolean);
   // Solo para evals (evals/harness/run.cjs --ablate): sin la definición del rol, para medir cuánto aporta.
-  if (process.env.AI_ENV_EVAL_ABLATE === '1') return { body: `Sos el ${role} de este repo. Seguí el prompt.`, model: field('model'), maxTurns: Number(field('maxTurns')) || null, disallowed: [] };
+  if (/^(role|all)$/.test(process.env.AI_ENV_EVAL_ABLATE || '')) return { body: `Sos el ${role} de este repo. Seguí el prompt.`, model: field('model'), maxTurns: Number(field('maxTurns')) || null, disallowed: [] };
   // Reglas del proyecto (.claude/prompts/<rol>.md) y memoria aprobada del rol (.dev-flow/memory/<rol>.md): se suman.
   const own = read(path.join(root, '.claude', 'prompts', `${role}.md`)).trim();
   if (/^\s*-\s+\S/m.test(own)) body += `\n\n## Reglas del proyecto (.claude/prompts/${role}.md)\n\n${own}`;
@@ -136,6 +136,8 @@ function prompt({ role, issue, pr, runDir, toolsDir, base, modeHeadless, cardFil
     ...(role === 'docs' ? [`- Estado del proyecto: node "${T('skills/ticket/scripts/estado.cjs')}" --write`, `- PRD: node "${T('skills/prd/scripts/prd.cjs')}" check`] : []),
     ...(has('--pr-after') ? [`- Abrir el PR: node "${T('skills/ticket/scripts/ticket.cjs')}" pr ${issue.number} --card ${WORK_CARD} --push`] : []),
   ];
+  // Solo para evals (--ablate all): sin los scripts deterministas, queda solo el esquema de la salida.
+  if (process.env.AI_ENV_EVAL_ABLATE === 'all') scripts.splice(0, scripts.length, ...scripts.filter((x) => /Esquema/.test(x)));
   const out = role === 'auditor'
     ? 'Tu respuesta final es el JSON del veredicto (se valida con el esquema). No guardes archivos: no tenés permiso de escritura.'
     : modeHeadless
