@@ -995,6 +995,8 @@ require('./quick-risk.cjs')({ check, add });
 
 // --- init en repos existentes: árbol sucio, rollback, fines de línea, brechas, watch y pre-commit nativo
 require('./brownfield.cjs')({ check, add });
+require('./hardening.cjs')({ check, add });
+require('./idea-lab.cjs')({ check, add });
 
 // --- Perfiles de plugins (shared/profiles.json, instaladores)
 require('./profiles.cjs')({ check, add });

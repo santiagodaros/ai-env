@@ -40,6 +40,10 @@ const CONTENT_RULES = [
   { id: 'exec', msg: 'ejecución dinámica de código o comandos', re: /(\beval\s*\(|new Function\s*\(|child_process|(?<![.\w])exec(Sync|File\w*)?\s*\(|\b(cp|childProcess)\.(exec|spawn)\w*\s*\(|Invoke-Expression|\biex\b|os\.system|\bsubprocess\b|shell\s*=\s*True)/ },
 ];
 
+const HIDDEN = /[\u200B\u2060-\u2064\u202A-\u202E\u2066-\u2069\u{E0000}-\u{E007F}]|(?!^)\uFEFF/u;
+// El hallazgo muestra cada carácter oculto como escape: mostrarlo tal cual lo volvería a esconder.
+const visible = (t) => t.replace(/[\u200B\u2060-\u2064\u202A-\u202E\u2066-\u2069\uFEFF\u{E0000}-\u{E007F}]/gu, (c) => `\\u{${c.codePointAt(0).toString(16).toUpperCase()}}`);
+
 // Diff unificado (git diff --unified=0) → líneas con archivo, signo y número de línea.
 function parseDiff(text) {
   const out = [];
@@ -60,6 +64,8 @@ function parseDiff(text) {
 function contentRisks(diffText, skip = () => false) {
   const found = [];
   for (const d of parseDiff(diffText)) {
+    // Texto oculto: cuenta también en pruebas y docs, que es justo donde se esconden instrucciones para un agente.
+    if (d.sign === '+' && HIDDEN.test(d.text)) { found.push({ id: 'hidden', msg: 'caracteres invisibles (ancho cero, bidi o Unicode Tags)', file: d.file, line: d.line, sign: d.sign, text: visible(d.text.trim()).slice(0, 120) }); continue; }
     if (skip(d.file)) continue; // sin comentarios de excepción: un comentario lo podría agregar el mismo cambio
     for (const r of CONTENT_RULES) {
       if (r.re.test(d.text)) { found.push({ id: r.id, msg: r.msg, file: d.file, line: d.line, sign: d.sign, text: d.text.trim().slice(0, 100) }); break; }
@@ -68,4 +74,4 @@ function contentRisks(diffText, skip = () => false) {
   return found;
 }
 
-module.exports = { PATH_RULES, CONTENT_RULES, IDENTITY_WORDS, words, pathReasons, parseDiff, contentRisks };
+module.exports = { HIDDEN, PATH_RULES, CONTENT_RULES, IDENTITY_WORDS, words, pathReasons, parseDiff, contentRisks };

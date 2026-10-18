@@ -2,6 +2,14 @@
 
 Cada plugin tiene su versión y cada publicación su tag `<plugin>--v<versión>`. Acá va lo que cambia para quien los usa.
 
+## 2026-10-18 — idea-lab 1.0.0
+
+- Plugin nuevo: /idea-lab:shape lleva una idea chica a una idea definida (preguntas cerradas, mercado con fuentes por subagentes scout, 16 ángulos que decide idea.cjs check, escéptico en frío, comunicado y preguntas, preview.html) y termina con la decisión de la persona; /idea-lab:plan arma el plan de product engineer (validar primero, no-gos, rebanadas, hitos usables, métricas, salida a producción) y genera el PRD en el formato de /dev-flow:prd. En todos los perfiles. Catálogo del README generado y chequeado en CI
+
+## 2026-10-18 — dev-flow 2.5.0
+
+- secscan marca texto oculto (ancho cero, bidi, Unicode Tags) como S013 alto, también en el pre-commit y el piso de quick-fix; collect y card verify --issue frenan archivos fuera del Alcance sin justificar (scope_extensions) y cambios de solo formato; noticed_out_of_scope en la tarjeta; tablas de excusas en los agentes y en quick-fix y feature-close; pasos con verificación en feature-flow, dispatch e init
+
 ## 2026-10-11 — dev-flow 2.4.0
 
 - dispatch: el tamaño L sube a opus solo al implementer (docs sigue en haiku y sre en sonnet, con turnos y esfuerzo de L); si un lote no entra, informa cuántos tickets más entrarían con los implementers L en sonnet y lo aplica solo con --allow-downgrade-implementer. El auditor nunca baja de modelo

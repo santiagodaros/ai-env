@@ -170,6 +170,22 @@ console.log(JSON.stringify({type:'result',subtype:'success',is_error:false,total
   r = run(DS, ['collect', '--run', runId || 'x'], { cwd: r4, env: env4 });
   check('dispatch collect: devuelve una línea y rutas (no la tarjeta entera) y registra en el expediente', r.code === 0 && r.out.trim().split('\n').length <= 3 && !/## Tarjeta de entrega/.test(r.out) && /expediente: .*impl-1\.md/.test(r.out) && fs.existsSync(path.join(r4, '.dev-flow', 'tickets', '1', 'index.md')), r.out);
   check('dispatch collect --show: muestra la tarjeta completa solo si se pide', /## Tarjeta de entrega/.test(run(DS, ['collect', '--run', runId || 'x', '--show'], { cwd: r4, env: env4 }).out));
+  // Alcance: un archivo fuera de "## Alcance" sin justificar frena el ticket en collect; con scope_extensions pasa.
+  const outF = path.join(rd, 'out.json');
+  const out0 = fs.existsSync(outF) ? fs.readFileSync(outF, 'utf8') : '';
+  let o0 = null; try { o0 = JSON.parse(out0); } catch { /* sin salida */ }
+  if (o0 && o0.structured_output) {
+    const cardOk = o0.structured_output;
+    const put = (c) => fs.writeFileSync(outF, JSON.stringify({ ...o0, structured_output: c }));
+    put({ ...cardOk, files_changed: [...cardOk.files_changed, 'src/fmt.js'] });
+    r = run(DS, ['collect', '--run', runId], { cwd: r4, env: env4 });
+    check('dispatch collect: una tarjeta que toca archivos fuera del Alcance sin justificar se rechaza, con la alternativa', r.code === 1 && /fuera del Alcance sin justificar: src\/fmt\.js/.test(r.out) && /scope_extensions/.test(r.out), r.out.slice(0, 300));
+    put({ ...cardOk, files_changed: [...cardOk.files_changed, 'src/fmt.js'], scope_extensions: [{ file: 'src/fmt.js', reason: 'el formato usa la resta nueva' }], noticed_out_of_scope: [{ where: 'src/calc.js:1', what: 'suma no valida que sean números' }] });
+    r = run(DS, ['collect', '--run', runId], { cwd: r4, env: env4 });
+    check('dispatch collect: justificado en scope_extensions pasa y avisa lo visto y no tocado', r.code === 0 && /visto y no tocado: 1/.test(r.out), r.out.slice(0, 300));
+    fs.writeFileSync(outF, out0);
+    run(DS, ['collect', '--run', runId], { cwd: r4, env: env4 });
+  } else check('dispatch collect: la corrida dejó out.json con la tarjeta para probar el alcance', false);
 
   // Reanudar: la misma sesión, en el mismo worktree, desde progress.md.
   const wtPath = require(H('worktree.cjs')).plan(r4, 'feat-1-resta').dest;

@@ -33,6 +33,14 @@ Pedí una sola confirmación al inicio: "Voy a verificar, escribir los dos docum
 8. **Commit de docs.** `git add docs/CHANGELOG.md docs/design/<slug>.md docs/features/<slug>` y commit solo de esos archivos.
 9. **Cierre.** Decile al usuario qué quedó escrito. Abrir el PR requiere su sí explícito (ver `pr-prep`). Si había sesión en segundo plano, que la cierre con `claude agents`.
 
+## Excusas que no valen
+
+| Excusa | Lo que corresponde |
+|---|---|
+| "Las pruebas pasan" | Tienen que fallar sin el cambio (`test-honesty`) |
+| "Es un hallazgo menor de seguridad" | Los altos frenan; un riesgo se acepta solo con `Riesgo aceptado:` escrito por la persona |
+| "Lo documento después" | El cierre incluye el STATE y el changelog; sin eso no está cerrado |
+
 ## Reglas
 
 - No cambies código de la feature en esta skill: solo documentos.

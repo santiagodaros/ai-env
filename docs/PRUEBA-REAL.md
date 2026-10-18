@@ -116,6 +116,22 @@ En un clon de un repo con código (o el descartable, con un commit hecho):
 - [ ] en un repo con `.husky/`, el pre-commit no se ofrece (`git-hook-other`)
 - [ ] segunda corrida de `/dev-flow:init`: no tiene nada para hacer
 
+## 4d. De la idea al plan (plugin `idea-lab`)
+
+En una carpeta descartable con git:
+
+- [ ] `/idea-lab:shape un aviso semanal de retiros de Azure`: hace como mucho 3 rondas de preguntas cerradas, lanza 2 o 3 `scout` en paralelo y cada dato de mercado tiene url
+- [ ] `docs/ideas/<slug>/preview.html` se abre sin red y muestra el comunicado, el mercado, los riesgos y los ángulos cubiertos
+- [ ] el `skeptic` devuelve al menos 3 objeciones; las altas te las pregunta
+- [ ] si elegís avanzar con ángulos pendientes, `decide` lo rechaza
+- [ ] `/idea-lab:plan <slug>` sin decisión "avanzar" frena; con ella, genera `PLAN.md` y `docs/PRD.md`, y `/dev-flow:prd check` pasa
+- [ ] con un `docs/PRD.md` existente, no lo pisa: deja `PRD.draft.md`
+
+## 4e. Alcance del ticket (Tech Lead)
+
+- [ ] un worker que toca un archivo fuera de `## Alcance` sin `scope_extensions`: `dispatch collect` lo rechaza y propone reanudar
+- [ ] un archivo con un control bidi (`\u202E`) en el diff: `secscan` y el pre-commit lo frenan como `S013`
+
 ## 5. Una feature chica
 
 ```

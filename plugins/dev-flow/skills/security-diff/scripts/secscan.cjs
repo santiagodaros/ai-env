@@ -28,6 +28,11 @@ const RULES = [
   ['S012', 'baja', /createHash\(\s*['"](md5|sha1)['"]\s*\)|hashlib\.(md5|sha1)\(/, 'hash débil'],
   ['S009', 'baja', /['"`]http:\/\/(?!localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]|www\.w3\.org|schemas\.|example\.)[^\s'"`]+/, 'URL sin cifrar'],
 ];
+// Caracteres invisibles: ancho cero, controles bidi (Trojan Source) y el bloque Unicode Tags, con los que se esconde texto
+// que una persona no ve en el diff pero un compilador o un modelo sí lee. No tienen uso legítimo en código ni en docs que
+// no se pueda escribir con un escape (​), así que "secscan-allow" no los excluye. ZWJ/ZWNJ (emojis, idiomas) no cuentan.
+const HIDDEN = /[​⁠-⁤‪-‮⁦-⁩\u{E0000}-\u{E007F}]|(?!^)﻿/u;
+const hiddenWhat = (t) => [...t].filter((c) => HIDDEN.test(c) || c === '﻿').map((c) => 'U+' + c.codePointAt(0).toString(16).toUpperCase().padStart(4, '0'));
 const LOCK = /(^|\/)(package-lock\.json|pnpm-lock\.yaml|yarn\.lock|poetry\.lock|Pipfile\.lock)$/;
 const found = [], deps = []; const touched = new Set(); let file = null, ln = 0;
 for (const l of d.stdout.split('\n')) {
@@ -35,6 +40,7 @@ for (const l of d.stdout.split('\n')) {
   const h = l.match(/^@@ -\d+(?:,\d+)? \+(\d+)/); if (h) { ln = Number(h[1]) - 1; continue; }
   if (!file || !l.startsWith('+') || l.startsWith('+++')) continue;
   ln++; const t = l.slice(1);
+  if (HIDDEN.test(t)) { found.push({ id: 'S013', sev: 'alta', file, line: ln, msg: `caracteres invisibles (${[...new Set(hiddenWhat(t))].slice(0, 4).join(', ')}): texto oculto en el diff; reemplazalos por un escape visible` }); continue; }
   if (/secscan-allow/.test(t)) continue;
   if (/(^|\/)package\.json$/.test(file) && /^\s*"(@?[\w.\/-]+)"\s*:\s*"[\^~><=]*\d/.test(t) && !/^\s*"(version|name)"/.test(t)) deps.push({ file, line: ln, msg: `dependencia nueva o actualizada: ${t.trim().replace(/,$/, '')}` });
   if (/(^|\/)requirements[\w.-]*\.txt$/.test(file) && /^[\w.\-\[\]]+\s*[=<>~!]/.test(t)) deps.push({ file, line: ln, msg: `dependencia nueva o actualizada: ${t.trim()}` });

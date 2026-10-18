@@ -2,26 +2,64 @@
   "_": "Única fuente de verdad de los perfiles de plugins. La usan /dev-flow:init (settings por repo) y /dev-flow:doctor; los instaladores llevan una copia literal que tests/profiles.cjs compara con esta tabla. Se sincroniza a plugins/dev-flow/lib/profiles.json con scripts/sync-shared.cjs.",
   "marketplace": "ai-env",
   "default": "full",
-  "order": ["core", "app", "cloud", "frontend", "full"],
+  "order": [
+    "core",
+    "app",
+    "cloud",
+    "frontend",
+    "full"
+  ],
   "profiles": {
     "core": {
-      "plugins": ["guard", "arch", "dev-flow"],
+      "plugins": [
+        "guard",
+        "arch",
+        "dev-flow",
+        "idea-lab"
+      ],
       "for": "backend, librerías y lógica de negocio"
     },
     "app": {
-      "plugins": ["guard", "arch", "dev-flow", "app-review"],
+      "plugins": [
+        "guard",
+        "arch",
+        "dev-flow",
+        "idea-lab",
+        "app-review"
+      ],
       "for": "APIs, microservicios y backends con autenticación o llamadas a APIs de Microsoft"
     },
     "cloud": {
-      "plugins": ["guard", "arch", "dev-flow", "cloud-ops"],
+      "plugins": [
+        "guard",
+        "arch",
+        "dev-flow",
+        "idea-lab",
+        "cloud-ops"
+      ],
       "for": "infraestructura como código (Terraform, Bicep) y gobernanza de Azure"
     },
     "frontend": {
-      "plugins": ["guard", "arch", "dev-flow", "app-review", "front-studio"],
+      "plugins": [
+        "guard",
+        "arch",
+        "dev-flow",
+        "idea-lab",
+        "app-review",
+        "front-studio"
+      ],
       "for": "interfaces web, React, accesibilidad y UI/UX"
     },
     "full": {
-      "plugins": ["guard", "arch", "dev-flow", "app-review", "cloud-ops", "front-studio"],
+      "plugins": [
+        "guard",
+        "arch",
+        "dev-flow",
+        "idea-lab",
+        "app-review",
+        "cloud-ops",
+        "front-studio"
+      ],
       "for": "todo; el valor por defecto, compatible con instalaciones anteriores"
     }
   }

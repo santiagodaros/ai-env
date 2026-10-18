@@ -17,6 +17,7 @@ Scripts: `D="${CLAUDE_PLUGIN_ROOT}/skills/dispatch/scripts"` → `node "$D/dispa
 2. **Salud del arnés**: `node "${CLAUDE_PLUGIN_ROOT}/skills/dispatch/scripts/harness.cjs" check --pre`. `dispatch run` lo corre igual y no lanza sobre una base en rojo.
 3. **Plan**: `prd.cjs check` y `list`. Proponé los tickets y su orden, y guardalo: `dispatch.cjs plan set "12,13 | 14 | 15" --goal "…"` (oleadas; una oleada = tickets independientes). Se reinyecta tras compactar. Pedí confirmación antes de crear issues.
 4. **Tickets**: `ticket.cjs create <ID>`. El issue es el brief completo del worker: rebanada del PRD, criterios, **Alcance** (archivos), **Fuera de alcance**, **Dependencias** y **Tamaño** (de las líneas `Archivos:`, `Fuera de alcance:`, `Depende de:`, `Tamaño:` de la sección del PRD).
+   **Verificar:** cada issue tiene Alcance no vacío; sin eso, `collect` no puede controlar qué toca el worker.
 5. **Escalá el esfuerzo a la complejidad** (más agentes cuesta ~15× tokens; el código paraleliza menos que la investigación):
 
    | Tamaño | Topología | Worker |
@@ -41,10 +42,12 @@ Scripts: `D="${CLAUDE_PLUGIN_ROOT}/skills/dispatch/scripts"` → `node "$D/dispa
    - El worker escribe solo en su worktree (Claude Code aísla las sesiones con `-w`): su progreso y su tarjeta van a `.dev-flow/ticket/` del worktree, y `status`/`collect` los traen al expediente.
    - Cada corrida: worktree propio, `--session-id`, copia fijada de los scripts del plugin (una actualización a mitad de camino no la rompe), expediente del ticket y memoria aprobada del rol en su system prompt.
    - Cada `--launch` pide tu confirmación (hook). Topes compartidos con feature-flow: techos 4 simultáneos, 20 por día, 2 min entre lanzamientos, más el presupuesto del límite de 5 h. Si rechaza, informá el motivo tal cual.
-8. **Seguir y recoger**: `dispatch.cjs status` (una línea por corrida). `dispatch.cjs collect --run <id>` valida, guarda la tarjeta o el veredicto en `.dev-flow/cards|verdicts/`, la registra en el expediente (`.dev-flow/tickets/<N>/`: `log.md`, `impl-k.md`/`audit-k.md`, `index.md`) y devuelve solo rutas. `--show` si necesitás verla entera; `--comment` la publica.
+8. **Seguir y recoger**: `dispatch.cjs status` (una línea por corrida). `dispatch.cjs collect --run <id>` valida, guarda la tarjeta o el veredicto en `.dev-flow/cards|verdicts/`, la registra en el expediente (`.dev-flow/tickets/<N>/`: `log.md`, `impl-k.md`/`audit-k.md`, `index.md`) y devuelve solo rutas. `--show` si necesitás verla entera; `--comment` la publica. Si la tarjeta toca archivos fuera del Alcance sin justificarlos en `scope_extensions`, `collect` la rechaza: reanudá la corrida con esa instrucción. Lo que el worker anotó en `noticed_out_of_scope` queda en el expediente: ofrecelo como ticket nuevo, no lo sumes al actual.
+   **Verificar:** `collect` terminó en 0 antes de abrir el PR.
 9. **Si se cortó** (sin turnos, error, máquina apagada): `dispatch.cjs resume --run <id> [--max-turns 40] --launch`. Retoma la misma sesión en el mismo worktree desde su `progress.md`.
 10. **PR**: desde el worktree, `ticket.cjs pr <N> --card .dev-flow/cards/<N>.json --push`. Commitea `docs/tickets/<N>.md` (resumen del expediente: decisiones y por qué) y lo cita en el PR.
 11. **Auditoría**: `dispatch.cjs run --pr <P> --role auditor --launch`. El que implementó nunca audita. `aprobar` + checks verdes → **el merge lo decide el usuario**. `cambios` → nuevo implementer sobre el mismo ticket: va a recibir el índice del expediente con los hallazgos abiertos. `bloquear` → se discute antes de seguir.
+   **Verificar:** el veredicto tiene evidencia por chequeo (comando o archivo:línea); un `aprobar` sin evidencia se trata como `cambios`.
 12. **Cierre**: `estado.cjs --write`, `harness.cjs check --end` (checkpoints: tickets en curso dentro del tope, PRs con tarjeta y veredicto, `docs/STATE.md` al día, sin worktrees para limpiar) y `worktree.cjs gc --apply`.
 
 ## Mejora continua

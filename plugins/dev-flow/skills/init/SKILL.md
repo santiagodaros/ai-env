@@ -59,7 +59,9 @@ Sin manifiesto ni código, solo documentos.
    - `settings-invalid`: `.claude/settings.json` no es JSON válido y no se toca.
 
    Después, UNA pregunta con tres opciones: **Aplicar lo recomendado** (Recomendado), **Revisar punto por punto**, **Cancelar**.
-4. Aplicar: `apply` con el `stamp` (si vuelve `stale-preview`, preview de nuevo y preguntá de nuevo), después `verify`. Si vuelve `rolled-back`, algo falló a mitad y se revirtió todo: decilo y mostrá el motivo; exit 3 (`partial`) significa que ni el rollback pudo y hay que mirar `git status`. Informá `notes` (respaldo) y cualquier FALLA de `verify`. Revisar: los pasos de abajo, con las respuestas ya dadas. Cancelar: decí que no se escribió nada.
+   **Verificar:** lo que mostraste sale del `preview` recién corrido (mismo `stamp`); si cambiaste el plan, preview de nuevo.
+4. Aplicar: `apply` con el `stamp` (si vuelve `stale-preview`, preview de nuevo y preguntá de nuevo), después `verify`. Si vuelve `rolled-back`, algo falló a mitad y se revirtió todo: decilo y mostrá el motivo; exit 3 (`partial`) significa que ni el rollback pudo y hay que mirar `git status`. Informá `notes` (respaldo) y cualquier FALLA de `verify`.
+   **Verificar:** `verify` sin FALLA antes de proponer el commit. Revisar: los pasos de abajo, con las respuestas ya dadas. Cancelar: decí que no se escribió nada.
 5. Si `summary.next` es `arch:arch-first`, seguí con esa skill y el tipo sugerido (`found.suggestedType`). Las decisiones de stack que la persona confirme (gestor de paquetes, framework, despliegue) van con `arch:adr`. Después, **Commit**.
 
 ## Revisar punto por punto

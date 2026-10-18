@@ -1,13 +1,45 @@
 {
   "name": "ai-env",
-  "description": "Entorno de trabajo para Claude Code: hooks de protección, workflow por features con arquitectura hexagonal, revisión de aplicaciones, operación de Azure y rediseño de front.",
-  "owner": {"name": "ai-env contributors", "url": "https://github.com/santiagodaros/ai-env"},
+  "description": "Entorno de trabajo para Claude Code: hooks de protección, workflow por features con arquitectura hexagonal, de la idea al plan, revisión de aplicaciones, operación de Azure y rediseño de front.",
+  "owner": {
+    "name": "ai-env contributors",
+    "url": "https://github.com/santiagodaros/ai-env"
+  },
   "plugins": [
-    {"name": "guard", "source": "./plugins/guard", "description": "Hooks de protección para cualquier repo: secretos, archivos protegidos, lectura de .env y comandos con impacto (git, rm, Azure, Terraform, despliegues sin what-if)."},
-    {"name": "arch", "source": "./plugins/arch", "description": "Arquitectura hexagonal antes del código: diseño, vista previa, aprobación humana, hook que impide escribir código sin aprobar o fuera de las capas, y registro de decisiones (ADR)."},
-    {"name": "dev-flow", "source": "./plugins/dev-flow", "description": "Workflow por features: una sesión por feature con topes, camino corto para arreglos chicos, compuertas de pruebas, arquitectura y seguridad, cierre documentado y presupuesto del límite de 5 h. Requiere arch."},
-    {"name": "app-review", "source": "./plugins/app-review", "description": "Revisión de código de aplicación en tres lentes (identidad, seguridad, costo de APIs), reglas para React y llamadas a APIs, y subagentes reviewer y explorer."},
-    {"name": "cloud-ops", "source": "./plugins/cloud-ops", "description": "Azure: verificación contra Microsoft Learn (con su servidor MCP), KQL de inventario, revisión de planes de Terraform y what-if de Bicep, verificación de IaC al terminar, entregables y registro de estado."},
-    {"name": "front-studio", "source": "./plugins/front-studio", "description": "Crítica y rediseño de UI con kit por página, opciones con selector, accesibilidad, performance, look de IA y plan de trabajo."}
+    {
+      "name": "guard",
+      "source": "./plugins/guard",
+      "description": "Hooks de protección para cualquier repo: secretos, archivos protegidos, lectura de .env y comandos con impacto (git, rm, Azure, Terraform, despliegues sin what-if)."
+    },
+    {
+      "name": "arch",
+      "source": "./plugins/arch",
+      "description": "Arquitectura hexagonal antes del código: diseño, vista previa, aprobación humana, hook que impide escribir código sin aprobar o fuera de las capas, y registro de decisiones (ADR)."
+    },
+    {
+      "name": "dev-flow",
+      "source": "./plugins/dev-flow",
+      "description": "Workflow por features: una sesión por feature con topes, camino corto para arreglos chicos, compuertas de pruebas, arquitectura y seguridad, cierre documentado y presupuesto del límite de 5 h. Requiere arch."
+    },
+    {
+      "name": "idea-lab",
+      "source": "./plugins/idea-lab",
+      "description": "De una idea chica a un plan listo para construir: preguntas, mercado con fuentes, ángulos que suelen faltar, escéptico en frío, vista previa y plan de product engineer que desemboca en el PRD."
+    },
+    {
+      "name": "app-review",
+      "source": "./plugins/app-review",
+      "description": "Revisión de código de aplicación en tres lentes (identidad, seguridad, costo de APIs), reglas para React y llamadas a APIs, y subagentes reviewer y explorer."
+    },
+    {
+      "name": "cloud-ops",
+      "source": "./plugins/cloud-ops",
+      "description": "Azure: verificación contra Microsoft Learn (con su servidor MCP), KQL de inventario, revisión de planes de Terraform y what-if de Bicep, verificación de IaC al terminar, entregables y registro de estado."
+    },
+    {
+      "name": "front-studio",
+      "source": "./plugins/front-studio",
+      "description": "Crítica y rediseño de UI con kit por página, opciones con selector, accesibilidad, performance, look de IA y plan de trabajo."
+    }
   ]
 }

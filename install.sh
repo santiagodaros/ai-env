@@ -3,7 +3,7 @@
 #   curl -fsSL https://raw.githubusercontent.com/santiagodaros/ai-env/main/install.sh | sh
 # Se puede volver a correr: actualiza en vez de duplicar.
 # Opciones por variable de entorno:
-#   AI_ENV_PROFILE=core               perfil: core, app, cloud, frontend o full (por defecto, full: los seis)
+#   AI_ENV_PROFILE=core               perfil: core, app, cloud, frontend o full (por defecto, full: los siete)
 #   AI_ENV_PLUGINS="guard dev-flow"   lista explícita de plugins; si está definida, gana sobre el perfil
 #   AI_ENV_DRY_RUN=1                  solo mostrar qué plugins instalaría, sin tocar nada
 #   AI_ENV_NO_SETUP=1                 no tocar ~/.claude/settings.json (statusline y actualización automática)
@@ -14,11 +14,11 @@ SOURCE="${AI_ENV_SOURCE:-santiagodaros/ai-env}"
 PROFILE="${AI_ENV_PROFILE:-full}"
 # Copia literal de shared/profiles.json (tests/profiles.cjs verifica que coincidan).
 case "$PROFILE" in
-  core) PROFILE_PLUGINS="guard arch dev-flow" ;;
-  app) PROFILE_PLUGINS="guard arch dev-flow app-review" ;;
-  cloud) PROFILE_PLUGINS="guard arch dev-flow cloud-ops" ;;
-  frontend) PROFILE_PLUGINS="guard arch dev-flow app-review front-studio" ;;
-  full) PROFILE_PLUGINS="guard arch dev-flow app-review cloud-ops front-studio" ;;
+  core) PROFILE_PLUGINS="guard arch dev-flow idea-lab" ;;
+  app) PROFILE_PLUGINS="guard arch dev-flow idea-lab app-review" ;;
+  cloud) PROFILE_PLUGINS="guard arch dev-flow idea-lab cloud-ops" ;;
+  frontend) PROFILE_PLUGINS="guard arch dev-flow idea-lab app-review front-studio" ;;
+  full) PROFILE_PLUGINS="guard arch dev-flow idea-lab app-review cloud-ops front-studio" ;;
   *) printf 'Perfil desconocido: %s. Usá core, app, cloud, frontend o full.\n' "$PROFILE" >&2; exit 1 ;;
 esac
 if [ -n "$AI_ENV_PLUGINS" ]; then PLUGINS="$AI_ENV_PLUGINS"; ORIGIN="AI_ENV_PLUGINS"; else PLUGINS="$PROFILE_PLUGINS"; ORIGIN="perfil $PROFILE"; fi

@@ -1,0 +1,19 @@
+{
+  "name": "idea-lab",
+  "version": "1.0.0",
+  "description": "De una idea chica a un plan listo para construir: preguntas, mercado con fuentes, ángulos que suelen faltar, escéptico en frío y vista previa (shape), y plan de product engineer con validaciones, hitos, rebanadas y PRD (plan).",
+  "author": {
+    "name": "ai-env contributors",
+    "url": "https://github.com/santiagodaros/ai-env"
+  },
+  "homepage": "https://github.com/santiagodaros/ai-env/tree/main/plugins/idea-lab",
+  "repository": "https://github.com/santiagodaros/ai-env",
+  "license": "MIT",
+  "keywords": [
+    "ideas",
+    "producto",
+    "mercado",
+    "prd",
+    "planificacion"
+  ]
+}

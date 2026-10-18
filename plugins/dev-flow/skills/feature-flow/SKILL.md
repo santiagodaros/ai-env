@@ -15,15 +15,19 @@ Objetivo: que cada feature tenga su propio contexto en archivos, para continuarl
 ## Procedimiento
 
 1. **Proponer el corte, preferí una sola feature.** Máximo 3. Por cada una: `slug` (minúsculas, números y guiones, hasta 5 palabras), objetivo en una línea, archivos que va a tocar y orden de dependencia. Si dos features tocan los mismos archivos, fusionalas en una. Mostrá el corte y pedí confirmación (herramienta de preguntas si está disponible). No sigas sin respuesta.
+   **Verificar:** ninguna feature comparte archivos con otra y cada una tiene su objetivo en una línea.
 2. **Crear `docs/features/<slug>/`** por cada feature confirmada, con las plantillas de `templates/`:
    - `SPEC.md`: seguí el procedimiento de `spec-interview` (objetivo, alcance, fuera de alcance, identidad/costos, verificación de punta a punta). Debe quedar autocontenido y de más de 200 caracteres.
    - `STATE.md`: registro vivo de decisiones y avance.
    - `HANDOFF.md`: lo que la sesión nueva necesita para arrancar sin preguntar.
    Sin nombres de cliente ni datos de tenant.
+   **Verificar:** el SPEC tiene fuera de alcance y una verificación de punta a punta concreta (un comando o un caso), no "que funcione".
 3. **Commitear solo esa carpeta** (`git add docs/features/<slug>` y commit), con permiso explícito del usuario. Los worktrees se crean desde el último commit: si los documentos no están commiteados, la sesión nueva no los ve.
+   **Verificar:** `git status --porcelain docs/features/<slug>` vacío.
 4. **Dry-run del lanzador**, una vez por feature:
    `node "${CLAUDE_PLUGIN_ROOT}/skills/feature-flow/scripts/launch.cjs" --slug <slug>`
    Imprime el plan, los cupos disponibles y el comando exacto. No lanza nada.
+   **Verificar:** el dry-run no rechaza; si rechaza, informá el motivo tal cual y frená.
 5. **Entregar el resultado.** Decile al usuario cómo continuar él mismo, en una terminal nueva dentro del repo:
    `claude -w <slug> -n <slug>`
    Al arrancar, el hook `rehydrate` inyecta `STATE.md` y `HANDOFF.md` de la feature.

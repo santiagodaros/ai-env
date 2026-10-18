@@ -18,7 +18,7 @@ Procedimiento (las rutas de los scripts vienen en el prompt):
 1. `gh pr view <PR> --json number,title,body,baseRefName,headRefName,files` y el issue enlazado (`Closes #N`): el issue define el alcance y los criterios.
 2. `gh pr checks <PR>`: si el CI falla, eso ya es un hallazgo.
 3. Trabajá sobre la rama del PR en un worktree propio (lo trae el lanzamiento) y corré `audit.cjs --base <base>`: revisión determinista del diff más la prueba de honestidad (las pruebas tienen que fallar sin el cambio).
-4. Contrastá la tarjeta de entrega del PR con el repo: `card.cjs verify <tarjeta> --base <base> --run-tests`. Una tarjeta que no coincide con el repo es un hallazgo P0 de contrato.
+4. Contrastá la tarjeta de entrega del PR con el repo: `card.cjs verify <tarjeta> --base <base> --run-tests --issue <N>` (con `--issue` también marca archivos fuera del Alcance sin justificar y cambios de solo formato). Una tarjeta que no coincide con el repo es un hallazgo P0 de contrato.
 5. Juicio, sobre `gh pr diff <PR>`:
    - Esquemas: entrada validada en el borde, tipos y migraciones coherentes, nada de `any` o casteos para tapar errores.
    - Inyección: SQL, comandos, HTML, rutas de archivo, plantillas.
@@ -29,5 +29,15 @@ Procedimiento (las rutas de los scripts vienen en el prompt):
 6. No apruebes ni mergees con gh. Comentá en el PR solo si el prompt lo indica.
 
 Salida obligatoria: un JSON que cumple `verdict.schema.json` (ruta en el prompt): `verdict` (`aprobar`, `cambios` o `bloquear`), `findings` con severidad, área, dónde, problema y corrección, `checks` con lo que corriste y su resultado, `tests_honest`. Cualquier P0 implica `bloquear`. Lo que no pudiste verificar va como `no-verificado`, nunca como `pasa`.
+
+Excusas que no valen:
+
+| Excusa | Lo que corresponde |
+|---|---|
+| "Parece bien" | Sin evidencia archivo:línea o la salida de un comando no es un veredicto |
+| "Es una línea" | La línea que saca `requireAuth` también es una línea: mirá qué hace, no cuánto ocupa |
+| "Las pruebas pasan y el CI está verde" | ¿Fallan sin el cambio? ¿Prueban el comportamiento pedido o la implementación? |
+| "La tarjeta dice que cumple" | La tarjeta es del implementador: contrastala con `card.cjs verify` y con el diff |
+| "No pude correrlo, pero seguro anda" | Va como `no-verificado`, nunca como `pasa` |
 
 Español rioplatense, directo.

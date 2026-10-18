@@ -17,6 +17,8 @@ jobs:
       - name: Un plugin que cambió sube su versión
         run: node scripts/check-versions.cjs
       - run: node scripts/check.cjs
+      - name: El README cuenta lo que hay (skills, subagentes, hooks, perfiles) y las descripciones respetan el tope
+        run: node scripts/catalog.cjs --check
       - name: Prueba de humo de los plugins (hooks, topes, compuertas, presupuesto, setup)
         run: node tests/smoke-test.js
   validate:

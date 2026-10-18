@@ -2,7 +2,7 @@
 #   irm https://raw.githubusercontent.com/santiagodaros/ai-env/main/install.ps1 | iex
 # Se puede volver a correr: actualiza en vez de duplicar.
 # Opciones por variable de entorno (definilas antes de correrlo):
-#   $env:AI_ENV_PROFILE = 'core'             perfil: core, app, cloud, frontend o full (por defecto, full: los seis)
+#   $env:AI_ENV_PROFILE = 'core'             perfil: core, app, cloud, frontend o full (por defecto, full: los siete)
 #   $env:AI_ENV_PLUGINS = 'guard dev-flow'   lista explicita de plugins; si esta definida, gana sobre el perfil
 #   $env:AI_ENV_DRY_RUN = '1'                solo mostrar que plugins instalaria, sin tocar nada
 #   $env:AI_ENV_NO_SETUP = '1'               no tocar ~\.claude\settings.json (statusline y actualizacion automatica)
@@ -16,11 +16,11 @@ $ErrorActionPreference = 'Stop'
 $source = if ($env:AI_ENV_SOURCE) { $env:AI_ENV_SOURCE } else { 'santiagodaros/ai-env' }
 # Copia literal de shared/profiles.json (tests/profiles.cjs verifica que coincidan).
 $profiles = [ordered]@{
-  core = 'guard arch dev-flow'
-  app = 'guard arch dev-flow app-review'
-  cloud = 'guard arch dev-flow cloud-ops'
-  frontend = 'guard arch dev-flow app-review front-studio'
-  full = 'guard arch dev-flow app-review cloud-ops front-studio'
+  core = 'guard arch dev-flow idea-lab'
+  app = 'guard arch dev-flow idea-lab app-review'
+  cloud = 'guard arch dev-flow idea-lab cloud-ops'
+  frontend = 'guard arch dev-flow idea-lab app-review front-studio'
+  full = 'guard arch dev-flow idea-lab app-review cloud-ops front-studio'
 }
 $profileName = if ($PluginProfile) { $PluginProfile } elseif ($env:AI_ENV_PROFILE) { $env:AI_ENV_PROFILE } else { 'full' }
 if (-not $profiles.Contains($profileName)) { throw "Perfil desconocido: $profileName. Usa core, app, cloud, frontend o full." }

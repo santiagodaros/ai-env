@@ -20,7 +20,7 @@ Antes de empezar:
 Cómo trabajar:
 1. Confirmá que estás en la rama del ticket (`feat/<N>-...` o `fix/<N>-...`). Si no, creala desde la rama principal actualizada. Escribí tu plan en `.dev-flow/ticket/progress.md` de tu worktree antes de tocar código (lo crea `harness.cjs check --worker` con lo de corridas anteriores; el arnés lo copia al expediente, que para vos es de solo lectura).
 2. Primero la prueba: escribí una que falle por la razón correcta y corréla. Después el código mínimo que la hace pasar. Repetí por criterio de aceptación.
-3. Corré lint, typecheck y pruebas del repo. Commits chicos y descriptivos en la rama. Tocá solo los archivos del Alcance del ticket; si necesitás otro, anotalo en `progress.md` y justificalo en la tarjeta. No toques `.claude/`, los pipelines ni las dependencias salvo que el ticket lo pida.
+3. Corré lint, typecheck y pruebas del repo. Commits chicos y descriptivos en la rama. Tocá solo los archivos del Alcance del ticket. Si necesitás otro, anotalo en `progress.md` y justificalo en `scope_extensions` (archivo y motivo): sin eso, `collect` frena el ticket. Lo que veas mal fuera del Alcance no lo arregles: anotalo en `noticed_out_of_scope` (dónde y qué). Nada de reformatear, renombrar ni reordenar código que el ticket no pide: los cambios de solo formato también frenan. No toques `.claude/`, los pipelines ni las dependencias salvo que el ticket lo pida.
    Después de cada paso significativo, actualizá `progress.md` (hecho, decisiones con motivo, siguiente paso): si la corrida se corta, la siguiente arranca de ahí.
 4. Medí la honestidad de tus pruebas con `test-honesty.cjs` (la ruta viene en el prompt): si pasan igual sin tu cambio, no sirven. Corregilas.
 5. No hagas merge, no cambies la rama principal y no apruebes nada. Abrí el PR solo si el prompt lo indica (con `ticket.cjs pr <N> --card <tarjeta> --push`).
@@ -32,5 +32,15 @@ Cierre obligatorio: la **tarjeta de entrega**, un JSON que cumple el esquema `ca
 - `decisions`: cada decisión de diseño con su motivo (quedan en el expediente y en `docs/tickets/<N>.md`).
 - `blind_spots`: lo que NO verificaste (integraciones reales, rendimiento, otros sistemas operativos…). "Ninguno" no es una respuesta.
 Si corrés en modo headless con esquema, la tarjeta es tu respuesta final. Si no, guardala donde indique el prompt (fuera de `.claude/`, que Claude Code protege) y validala con `card.cjs check`.
+
+Excusas que no valen:
+
+| Excusa | Lo que corresponde |
+|---|---|
+| "Ya que estaba, lo mejoré" | Va en `noticed_out_of_scope`; es otro ticket |
+| "La prueba pasa" | ¿Falla sin tu cambio? Corré `test-honesty`; si pasa igual, no prueba nada |
+| "Es obvio que cumple" | Cada criterio necesita evidencia: comando, prueba o archivo:línea |
+| "No hay nada que no haya verificado" | Siempre hay algo: integraciones reales, otro sistema operativo, datos de producción |
+| "El linter lo reformateó solo" | Revertí lo que no es tuyo; solo formato en archivos ajenos frena el ticket |
 
 Español rioplatense, sin relleno. Lo que no sabés, lo decís.

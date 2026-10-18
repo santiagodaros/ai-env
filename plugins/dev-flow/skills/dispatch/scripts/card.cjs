@@ -4,7 +4,9 @@
 //   node card.cjs check <archivo|-> [--verdict]          valida contra el esquema
 //   node card.cjs extract <salida-de-claude.json> [--out f] [--verdict]
 //                                                        saca structured_output (claude -p --json-schema) o el bloque ```json final
-//   node card.cjs verify <archivo> [--base main] [--run-tests]
+//   node card.cjs verify <archivo> [--base main] [--run-tests] [--issue <N> | --scope a,b]
+//                                                        con --issue o --scope, además: archivos fuera del Alcance sin
+//                                                        justificar y cambios de solo formato
 //                                                        contrasta la tarjeta con el repo: archivos reales vs declarados,
 //                                                        comandos con error declarados como éxito, pruebas que no pasan
 //   node card.cjs render <archivo> [--verdict]           markdown para el PR o un comentario
@@ -69,11 +71,31 @@ function render(c, verdict = false) {
   if (c.decisions && c.decisions.length) L.push('', '### Decisiones', '', ...c.decisions.map((d) => `- ${d.decision} (${d.reason})`));
   if (c.risks && c.risks.length) L.push('', '### Riesgos', '', ...c.risks.map((r) => `- ${r}`));
   if (c.followups && c.followups.length) L.push('', '### Pendientes para otro ticket', '', ...c.followups.map((r) => `- ${r}`));
+  if (c.scope_extensions && c.scope_extensions.length) L.push('', '### Fuera del Alcance, justificado', '', ...c.scope_extensions.map((e) => `- \`${e.file}\`: ${e.reason}`));
+  if (c.noticed_out_of_scope && c.noticed_out_of_scope.length) L.push('', '### Visto y no tocado (fuera del Alcance)', '', ...c.noticed_out_of_scope.map((e) => `- ${e.where}: ${e.what}`));
   L.push('', '### Archivos', '', ...c.files_changed.map((f) => `- \`${f}\``));
   return L.join('\n') + '\n';
 }
 
-function verify(c, { base = 'main', runTests = false, cwd = process.cwd() } = {}) {
+// Alcance del ticket: la sección "## Alcance" del issue (rutas exactas, carpetas o `carpeta/**`).
+// Fuera del alcance solo vale lo que la tarjeta justifica en scope_extensions; el resumen del ticket y el changelog no cuentan.
+const EXEMPT = /^(docs\/tickets\/|\.dev-flow\/|docs\/CHANGELOG\.md$|CHANGELOG\.md$)/;
+const norm = (f) => String(f).replace(/\\/g, '/').replace(/^\.\//, '');
+function scopeFromBody(body) {
+  const lines = String(body || '').split('\n');
+  const i = lines.findIndex((l) => /^##\s+Alcance/i.test(l));
+  if (i < 0) return [];
+  const j = lines.slice(i + 1).findIndex((l) => /^##\s/.test(l) || /^---\s*$/.test(l));
+  return [...lines.slice(i + 1, j < 0 ? undefined : i + 1 + j).join('\n').matchAll(/^\s*-\s+`?([^`\s(][^`\s]*)`?/gm)].map((m) => norm(m[1]));
+}
+const inScope = (f, scope) => scope.some((s) => { const d = s.replace(/\/?\*+$/, ''); return f === s || f === d || f.startsWith(d.replace(/\/$/, '') + '/'); });
+function outOfScope(files, scope, c) {
+  if (!scope || !scope.length) return [];
+  const ext = new Set(((c && c.scope_extensions) || []).map((e) => norm(e.file)));
+  return files.map(norm).filter((f) => !EXEMPT.test(f) && !inScope(f, scope) && !ext.has(f));
+}
+
+function verify(c, { base = 'main', runTests = false, cwd = process.cwd(), scope = [] } = {}) {
   const issues = [];
   const git = (a) => spawnSync('git', a, { cwd, encoding: 'utf8' });
   const mb = git(['merge-base', base, 'HEAD']);
@@ -85,6 +107,14 @@ function verify(c, { base = 'main', runTests = false, cwd = process.cwd() } = {}
     const notReal = [...said].filter((f) => !real.has(f));
     if (notDeclared.length) issues.push(`archivos cambiados que la tarjeta no declara: ${notDeclared.slice(0, 8).join(', ')}`);
     if (notReal.length) issues.push(`archivos declarados que no cambiaron en la rama: ${notReal.slice(0, 8).join(', ')}`);
+    const out = outOfScope([...real], scope, c);
+    if (out.length) issues.push(`archivos fuera del Alcance del ticket sin justificar en scope_extensions: ${out.slice(0, 8).join(', ')}`);
+    // Cambios de solo formato (espacios, sangría, saltos): inflan el diff sin cambiar nada. Se comparan los conteos con y sin -w.
+    const ns = (extra) => Object.fromEntries(git(['diff', '--numstat', ...extra, `${mb.stdout.trim()}...HEAD`]).stdout.split('\n').filter(Boolean).map((l) => { const [a, d, f] = l.split('\t'); return [norm(f), (Number(a) || 0) + (Number(d) || 0)]; }));
+    const all = ns([]), sem = ns(['-w', '--ignore-blank-lines']);
+    const ext = new Set((c.scope_extensions || []).map((e) => norm(e.file)));
+    const churn = Object.entries(all).filter(([f, n]) => !ext.has(f) && n - (sem[f] || 0) >= 10 && (n - (sem[f] || 0)) / n > 0.5).map(([f, n]) => `${f} (${n - (sem[f] || 0)} de ${n} líneas)`);
+    if (churn.length) issues.push(`cambios de solo formato (espacios, sangría o líneas en blanco), fuera de lo que pide el ticket: ${churn.slice(0, 5).join(', ')}. Revertilos o justificalos en scope_extensions`);
     const br = git(['branch', '--show-current']).stdout.trim();
     if (br && br !== c.branch) issues.push(`la tarjeta dice rama ${c.branch} y estás en ${br}`);
   }
@@ -121,7 +151,11 @@ if (require.main === module) {
       const c = JSON.parse(read(file));
       const errs = validate(c);
       if (errs.length) { console.log(`Tarjeta inválida:\n- ${errs.join('\n- ')}`); process.exit(1); }
-      const issues = verify(c, { base: get('--base') || 'main', runTests: argv.includes('--run-tests') });
+      let scope = get('--scope') ? get('--scope').split(',').map((x) => x.trim()).filter(Boolean) : [];
+      if (!scope.length && get('--issue')) {
+        try { scope = scopeFromBody(require('../../../lib/gh.cjs').ghJson(['issue', 'view', String(get('--issue')), '--json', 'body']).body); } catch { console.error(`No pude leer el Alcance del issue #${get('--issue')}: no se verificó el alcance.`); }
+      }
+      const issues = verify(c, { base: get('--base') || 'main', runTests: argv.includes('--run-tests'), scope });
       if (issues.length) { console.log(`La tarjeta no coincide con el repo:\n- ${issues.join('\n- ')}`); process.exit(1); }
       console.log('La tarjeta coincide con el repo.');
     } else if (cmd === 'render') {
@@ -130,4 +164,4 @@ if (require.main === module) {
   } catch (e) { console.error(e.message); process.exit(e instanceof SyntaxError ? 2 : 1); }
 }
 
-module.exports = { validate, extract, render, verify, schemaPath: (verdict) => path.join(SCHEMAS, verdict ? 'verdict.schema.json' : 'card.schema.json') };
+module.exports = { validate, extract, render, verify, scopeFromBody, outOfScope, schemaPath: (verdict) => path.join(SCHEMAS, verdict ? 'verdict.schema.json' : 'card.schema.json') };

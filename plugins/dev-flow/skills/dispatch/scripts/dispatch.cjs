@@ -510,6 +510,13 @@ function collect() {
   const verdict = r.role === 'auditor';
   const errs = card.validate(r.result, verdict);
   if (errs.length) fail(`${verdict ? 'veredicto' : 'tarjeta'} inválida:\n- ${errs.join('\n- ')}`);
+  // Alcance: un archivo fuera de "## Alcance" sin justificar en scope_extensions frena el ticket antes de la auditoría.
+  if (!verdict && r.issue) {
+    let scope = [];
+    try { scope = card.scopeFromBody(ghJson(['issue', 'view', String(r.issue), '--json', 'body']).body); } catch { /* sin gh: lo verifica el auditor con card verify --issue */ }
+    const out = card.outOfScope(r.result.files_changed || [], scope, r.result);
+    if (out.length) fail(`la tarjeta de #${r.issue} toca archivos fuera del Alcance sin justificar: ${out.join(', ')}.\nAlternativa: dispatch resume --run ${r.id} pidiendo revertirlos o justificarlos en scope_extensions (archivo y motivo); lo que vio y no le tocaba va en noticed_out_of_scope.`);
+  }
   const dest = path.join(root, '.dev-flow', verdict ? 'verdicts' : 'cards', `${verdict ? r.pr : r.issue}.json`);
   fs.mkdirSync(path.dirname(dest), { recursive: true });
   fs.writeFileSync(dest, JSON.stringify(r.result, null, 2) + '\n');
@@ -522,6 +529,8 @@ function collect() {
   // Solo una línea y rutas: el contenido vive en disco (regla anti teléfono descompuesto).
   console.log(oneLine(r));
   console.log(`  guardado: ${path.relative(root, dest)}${rec && rec.report ? ` · expediente: ${path.relative(root, path.join(rec.dir, rec.report))} · índice: ${path.relative(root, path.join(rec.dir, 'index.md'))}` : ''}`);
+  const noticed = (!verdict && r.result.noticed_out_of_scope) || [];
+  if (noticed.length) console.log(`  visto y no tocado: ${noticed.length} (en el expediente; candidatos a ticket nuevo)`);
   if (has('--show')) console.log(`\n${md}`);
   if (has('--comment')) {
     const f = path.join(r.runDir, 'comment.md'); fs.writeFileSync(f, md);

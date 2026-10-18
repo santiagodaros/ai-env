@@ -39,6 +39,15 @@ Y por el **contenido** del diff (líneas agregadas y eliminadas, fuera de prueba
 
 Los umbrales de tamaño se ajustan en `.claude/dev-flow.json` (`{"quickFix": {"maxFiles": 2, "maxLines": 40}}`), nunca por encima del techo. Las reglas de ruta y contenido no tienen excepción.
 
+## Excusas que no valen
+
+| Excusa | Lo que corresponde |
+|---|---|
+| "Es una línea" | El script mira qué hace la línea, no cuánto ocupa; si te saca del carril, va al flujo completo |
+| "No hace falta prueba para esto" | La exención (`Sin pruebas:`) la declara la persona, nunca vos |
+| "Ya que estaba, arreglo lo de al lado" | Fuera de lo pedido no se toca; mencionalo al final |
+| "El script se equivoca, es un falso positivo" | Decilo y proponé el flujo completo; el piso no se baja |
+
 ## Reglas
 
 - No edites `.claude/dev-flow.json` para que tu propio cambio pase.

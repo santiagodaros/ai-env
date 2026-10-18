@@ -164,6 +164,48 @@
           }
         }
       }
+    },
+    "scope_extensions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "file",
+          "reason"
+        ],
+        "properties": {
+          "file": {
+            "type": "string",
+            "minLength": 1
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 10
+          }
+        }
+      }
+    },
+    "noticed_out_of_scope": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "where",
+          "what"
+        ],
+        "properties": {
+          "where": {
+            "type": "string",
+            "minLength": 3
+          },
+          "what": {
+            "type": "string",
+            "minLength": 10
+          }
+        }
+      }
     }
   }
 }

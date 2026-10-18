@@ -1,6 +1,6 @@
 # ai-env
 
-Marketplace público de Claude Code: 6 plugins modulares para orquestación multi-agente, arquitectura aprobada antes del código, defensas deterministas en tiempo de ejecución y operación de Azure.
+Marketplace público de Claude Code: 7 plugins modulares para llevar una idea a un plan, orquestación multi-agente, arquitectura aprobada antes del código, defensas deterministas en tiempo de ejecución y operación de Azure.
 Las decisiones las toman scripts con reglas fijas o una persona, nunca el criterio del modelo en ese momento. Contenido en español rioplatense.
 
 [![CI](https://github.com/santiagodaros/ai-env/actions/workflows/check.yml/badge.svg?branch=main)](https://github.com/santiagodaros/ai-env/actions/workflows/check.yml)
@@ -58,6 +58,7 @@ claude plugin install guard@ai-env   # arch, dev-flow, app-review, cloud-ops, fr
 | [`guard`](plugins/guard/README.md) | 3 hooks: secretos, archivos protegidos, comandos con impacto. Sin configuración | 0 tokens |
 | [`arch`](plugins/arch/README.md) | 2 skills, 2 hooks: arquitectura hexagonal aprobada por una persona antes del código; registro de decisiones (ADR) | ~280 tokens |
 | [`dev-flow`](plugins/dev-flow/README.md) | 15 skills, 5 subagentes, 6 hooks: init, carril rápido, features con compuertas, Tech Lead + workers, presupuesto, evals del arnés. Instala `arch` como dependencia | ~2.000 tokens |
+| [`idea-lab`](plugins/idea-lab/README.md) | 2 skills, 2 subagentes: de una idea chica a una idea definida (preguntas, mercado con fuentes, ángulos, escéptico, vista previa) y a un plan de product engineer que genera el PRD | ~200 tokens medidos (solo los subagentes) |
 | [`app-review`](plugins/app-review/README.md) | 3 skills, 2 subagentes de revisión de aplicaciones | ~600 tokens |
 | [`cloud-ops`](plugins/cloud-ops/README.md) | 6 skills de Azure, 1 hook de verificación de Terraform, Bicep y PowerShell, MCP de Microsoft Learn | ~890 tokens |
 | [`front-studio`](plugins/front-studio/README.md) | 12 skills de crítica y rediseño de UI, accesibilidad y performance | ~890 tokens |
@@ -66,17 +67,17 @@ claude plugin install guard@ai-env   # arch, dev-flow, app-review, cloud-ops, fr
 
 ## 3. Perfiles
 
-Se instalan los seis una vez por máquina; cada repo activa solo los de su perfil mediante `enabledPlugins`. La fuente de verdad es [`shared/profiles.json`](shared/profiles.json); los instaladores llevan una copia literal que una prueba compara.
+Se instalan los siete una vez por máquina; cada repo activa solo los de su perfil mediante `enabledPlugins`. La fuente de verdad es [`shared/profiles.json`](shared/profiles.json); los instaladores llevan una copia literal que una prueba compara.
 
 | Perfil | Plugins | Contexto agregado (medido) | Skills automáticas | Uso típico |
 |---|---|---|---|---|
-| `core` | guard, arch, dev-flow | +520 tokens | 1 | Backend, librerías, lógica de negocio |
+| `core` | guard, arch, dev-flow, idea-lab | +520 tokens | 1 | Backend, librerías, lógica de negocio |
 | `app` | core + app-review | +1.160 tokens | 4 | APIs y backends con autenticación o APIs de Microsoft |
 | `cloud` | core + cloud-ops | +1.410 tokens | 7 | Terraform, Bicep, gobernanza de Azure |
 | `frontend` | core + app-review + front-studio | +1.280 tokens | 5 | UI, React, accesibilidad |
-| `full` | los seis | +2.170 tokens | 11 | Todo (por defecto) |
+| `full` | los siete | +2.170 tokens | 11 | Todo (por defecto) |
 
-Medición: `claude -p --plugin-dir …` contra una sesión sin plugins (~38.800 tokens de base), con el uso que informa la CLI (dev-flow 2.1.0). 27 de las 38 skills son manuales. La diferencia entre `core` y `full` es ~1.650 tokens, un 4 % de la base: el beneficio principal es la **precisión** (1 skill candidata en vez de 11), no el ahorro.
+Medición: `claude -p --plugin-dir …` contra una sesión sin plugins (~38.800 tokens de base), con el uso que informa la CLI (dev-flow 2.1.0). `idea-lab`, que está en todos los perfiles desde dev-flow 2.5.0, suma ~200 tokens más (medido igual): solo las descripciones de sus dos subagentes, porque sus skills son manuales. 29 de las 40 skills son manuales. La diferencia entre `core` y `full` es ~1.650 tokens, un 4 % de la base: el beneficio principal es la **precisión** (1 skill candidata en vez de 11), no el ahorro.
 
 `/dev-flow:init` sugiere el perfil según el stack (UI → `frontend`, IaC → `cloud`, API sin UI → `app`, UI + IaC → `full`, si no `core`) y pregunta si el repo se comparte:
 
@@ -195,6 +196,8 @@ Con código y sin arquitectura, init encadena `/arch:arch-first`.
 | Comando | Cuándo | Qué hace |
 |---|---|---|
 | `/dev-flow:init` | Repo nuevo o recién clonado | Detecta, muestra el plan, aplica con tu sí, fija el perfil, propone el commit |
+| `/idea-lab:shape <idea>` | Una idea que todavía es chica | Preguntas, mercado con fuentes, riesgos, pre-mortem, escéptico y vista previa; termina con tu decisión |
+| `/idea-lab:plan <slug>` | Idea decidida | Plan de product engineer: qué validar primero, hitos, rebanadas y el PRD |
 | `/arch:arch-first` | Programa, servicio o automatización nueva | Arquitectura hexagonal; no se escribe código hasta que la apruebes |
 | `/dev-flow:quick-fix <qué>` | Arreglo chico | Carril rápido con las mismas compuertas y una parada humana |
 | `/dev-flow:feature-run` | Una feature | SPEC → implementación → cierre → PR, con compuertas |
