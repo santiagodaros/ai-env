@@ -52,7 +52,7 @@ Scripts: `D="${CLAUDE_PLUGIN_ROOT}/skills/dispatch/scripts"` → `node "$D/dispa
 
 ## Mejora continua
 - `dispatch.cjs stats`: costo, turnos, cortes, reanudaciones, retrabajo, permisos denegados y hallazgos repetidos, sin leer contenido. Los permisos denegados son candidatos para `workers.allowedTools`.
-- `dispatch.cjs memory propose` sugiere lecciones a partir de hallazgos repetidos; **no se aplican solas**. Con el visto bueno del usuario: `dispatch.cjs memory add --role implementer "…"` (máximo 40 por rol; se suman al system prompt del rol).
+- `dispatch.cjs memory propose` sugiere lecciones a partir de hallazgos repetidos; **no se aplican solas**. Con el visto bueno del usuario: `dispatch.cjs memory add --role implementer "…"` (máximo 40 por rol; se suman al system prompt del rol). Si el mismo hallazgo de juicio aparece en 3 PRs o más, también propone una **regla determinista** en `.dev-flow/memory/rule-proposals.json`: completá `pattern` y un ejemplo `good`, `dispatch.cjs memory rule-check` corre su prueba y `dispatch.cjs memory rule-add --id <id>` (con el sí del usuario) la pasa a `.dev-flow/rules.json`, que `audit.cjs` aplica en cada auditoría.
 - Antes de cambiar los prompts de los roles: `node evals/harness/run.cjs` en el repo de ai-env (casos con trampas: SQL interpolado, prueba complaciente, criterios contradictorios, cambio limpio).
 
 ## Reglas

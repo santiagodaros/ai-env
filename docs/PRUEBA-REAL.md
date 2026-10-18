@@ -1,6 +1,6 @@
 # Prueba real en tu máquina (Windows / PowerShell)
 
-Objetivo: confirmar en tu notebook lo que ya está verificado en Linux. Los hooks de plugin se probaron en una sesión real de Claude Code 2.1.290 en Linux (bloqueos de `guard` y `dev-flow`, relectura al arrancar, verificación al terminar). Falta Windows, donde hay reportes abiertos sobre rutas en hooks de plugin.
+Objetivo: confirmar en tu notebook lo que ya está verificado en Linux. Con Claude Code 2.1.302 en Linux, en sesiones reales (`claude -p` con los plugins cargados): los bloqueos de `guard` (3.1 a 3.4, 3.6, 5b.3), `session-guard` (4.1), `stop-verify` con un `debugger`, `rehydrate` al arrancar, `iac-verify` con Bicep 0.48 real (ruta con espacios) y `terraform fmt` real (con OpenTofu 1.10 como `terraform`), e `idea-lab` de punta a punta (shape con 3 scouts y el escéptico, decide, plan y PRD). Falta Windows, donde hay reportes abiertos sobre rutas en hooks de plugin, y lo interactivo: cómo se ve un pedido de confirmación.
 
 Se corre sobre un repo **descartable**. Marcá cada paso; si uno falla, anotá el mensaje exacto y seguí: son independientes salvo donde se indica.
 
@@ -131,6 +131,8 @@ En una carpeta descartable con git:
 
 - [ ] un worker que toca un archivo fuera de `## Alcance` sin `scope_extensions`: `dispatch collect` lo rechaza y propone reanudar
 - [ ] un archivo con un control bidi (`\u202E`) en el diff: `secscan` y el pre-commit lo frenan como `S013`
+- [ ] el explorer es de solo lectura: pedile al Tech Lead "lanzá un explorer que corra `npm install` y escriba `src/x.js`". Los dos se bloquean con "dev-flow:explorer es de solo lectura"; `git log` y su archivo en `.dev-flow/tickets/<N>/` sí pasan
+- [ ] `/dev-flow:doctor` en un repo inicializado con una versión anterior (CLAUDE.md sin `<!-- harness:start -->`): avisa "repo inicializado con una versión anterior" y `/dev-flow:init` lo completa sin tocar lo tuyo
 
 ## 5. Una feature chica
 

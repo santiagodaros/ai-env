@@ -85,6 +85,9 @@ function commandsBlock(det) {
     '<!-- commands:end -->', ''].join('\n');
 }
 
+// Secciones que rehydrate muestra al arrancar; las que falten en un STATE existente.
+const STATE_SECTIONS = ['Siguiente paso', 'Bloqueos'];
+const stateGaps = (text) => STATE_SECTIONS.filter((h) => !new RegExp(`^##\\s+${h}\\s*$`, 'mi').test(String(text || '')));
 const STATE_TEMPLATE = '# STATE\n\nEstado vivo del proyecto. Al arrancar una sesión, el hook rehydrate muestra el siguiente paso y los bloqueos; tras /compact, todo.\n\n## Siguiente paso\n- \n\n## Bloqueos\n- \n\n## Decisiones\n- \n\n## Hecho\n- \n\n## Pendiente\n- \n';
 // Forma de trabajo para Claude en este repo: corta y con lo que más pesa primero. Es lo único que se lee en cada
 // sesión aunque los plugins estén apagados; el resto vive en los archivos a los que apunta.
@@ -186,7 +189,14 @@ const STEPS = {
     const cur = ctx.fs.read('docs/STATE.md');
     if (cur === null && ctx.fs.read('docs/ESTADO.md') !== null) return { status: 'nothing', reason: 'el repo usa docs/ESTADO.md (nombre anterior): se sigue leyendo y escribiendo ahí; para unificar, git mv docs/ESTADO.md docs/STATE.md' };
     if (cur === null) return { status: 'would-do', actions: [{ path: 'docs/STATE.md', op: 'create', desc: `crear docs/STATE.md (el hook rehydrate lo reinyecta tras /compact${tl ? '; con el bloque que estado.cjs completa desde GitHub' : ''})`, content: STATE_TEMPLATE + (tl ? STATE_GENERATED : '') }] };
-    if (tl && !cur.includes('<!-- estado:start -->')) return { status: 'would-do', actions: [{ path: 'docs/STATE.md', op: 'append', desc: 'agregar a docs/STATE.md el bloque que estado.cjs completa desde GitHub (lo tuyo queda igual)', content: (cur.endsWith('\n') ? '' : '\n') + STATE_GENERATED }] };
+    // Un STATE de una versión anterior (dev-flow < 2.6) no tiene "Siguiente paso" ni "Bloqueos": se agregan al final.
+    const missing = stateGaps(cur);
+    let add = missing.map((h) => `## ${h}\n- \n`).join('\n');
+    if (tl && !cur.includes('<!-- estado:start -->')) add += (add ? '\n' : '') + STATE_GENERATED;
+    if (add) {
+      const what = [missing.length ? `las secciones ${missing.map((h) => `"${h}"`).join(' y ')} (rehydrate las muestra al arrancar)` : '', tl && !cur.includes('<!-- estado:start -->') ? 'el bloque que estado.cjs completa desde GitHub' : ''].filter(Boolean).join(' y ');
+      return { status: 'would-do', actions: [{ path: 'docs/STATE.md', op: 'append', desc: `agregar a docs/STATE.md ${what} (lo tuyo queda igual)`, content: (cur.endsWith('\n') ? '\n' : '\n\n') + add }] };
+    }
     return { status: 'nothing', reason: 'docs/STATE.md ya está' };
   },
   'hygiene-plan'(ctx) {
@@ -488,4 +498,4 @@ if (require.main === module) {
     }
   }
 }
-module.exports = { main, runSteps, STEP_IDS };
+module.exports = { main, runSteps, STEP_IDS, stateGaps };

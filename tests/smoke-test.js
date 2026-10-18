@@ -999,6 +999,8 @@ require('./hardening.cjs')({ check, add });
 require('./idea-lab.cjs')({ check, add });
 require('./session.cjs')({ check, add });
 require('./api-ui.cjs')({ check, add });
+require('./readonly.cjs')({ check, add });
+require('./rules.cjs')({ check, add });
 
 // --- Perfiles de plugins (shared/profiles.json, instaladores)
 require('./profiles.cjs')({ check, add });

@@ -26,6 +26,7 @@ node evals/harness/run.cjs               # evals con el modelo real (cuesta cuot
 - Skills manuales por defecto (`disable-model-invocation: true`); una automática necesita un disparador claro y su eval.
 - Prueba nueva por cada comportamiento nuevo, en `tests/` (los módulos se cargan desde `tests/smoke-test.js`).
 - Español rioplatense en todo lo que lee una persona.
+- Probar a mano sin instalar: `claude --plugin-dir plugins/dev-flow --plugin-dir plugins/arch` (dev-flow sin arch no carga).
 
 ## Publicar
-Primero `git fetch --tags` (sin los tags de main, `release` cree que la versión actual no se publicó y no la sube). `node scripts/release.cjs <plugin> patch|minor|major "<qué cambió>"` sube la versión y anota `CHANGELOG.md`. Rama, CI en verde en los tres sistemas, merge a main: el workflow crea el tag `<plugin>--v<versión>`. Un plugin nuevo arranca en 1.0.0 y suma su entrada a `CHANGELOG.md`, `.claude-plugin/marketplace.json`, `shared/profiles.json` y las tablas de los instaladores (una prueba las compara).
+Primero `git fetch --tags` (sin los tags de main, `release` cree que la versión actual no se publicó y no la sube). `node scripts/release.cjs <plugin> patch|minor|major "<qué cambió>"` sube la versión y anota `CHANGELOG.md`. Rama y PR: `main` está protegida (sin push directo; el merge pide los siete checks del CI en verde, Linux, Windows y macOS). Al mergear, el workflow crea el tag `<plugin>--v<versión>`. Un plugin nuevo arranca en 1.0.0 y suma su entrada a `CHANGELOG.md`, `.claude-plugin/marketplace.json`, `shared/profiles.json` y las tablas de los instaladores (una prueba las compara).

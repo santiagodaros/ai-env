@@ -10,6 +10,7 @@
 //   node dispatch.cjs plan set "12,13 | 14 | 15" [--goal "..."]  ·  plan show
 //   node dispatch.cjs next [--issue <N>] [--json]                          el próximo paso de cada ticket, con su comando
 //   node dispatch.cjs memory show [--role r] · memory propose · memory add --role r "lección"
+//   node dispatch.cjs memory rule-check · memory rule-add --id regla-x   (hallazgo repetido → regla determinista con su prueba)
 // Sin --launch es un dry-run. Antes de lanzar corre `harness check --pre`: no se lanza sobre una base rota.
 // Cada corrida copia los scripts del plugin a su carpeta (versión fijada: una actualización a mitad de camino no la rompe)
 // y lleva un --session-id propio (para reanudarla). Lo que el worker hace queda en el expediente del ticket
@@ -59,6 +60,8 @@ function roleDef(role, root) {
   let body = (m ? m[2] : t).trim();
   const field = (k) => { const x = fm.match(new RegExp(`^${k}:\\s*(.+)$`, 'm')); return x ? x[1].trim() : null; };
   const list = (k) => (field(k) || '').split(',').map((x) => x.trim()).filter(Boolean);
+  // Solo para evals (evals/harness/run.cjs --ablate): sin la definición del rol, para medir cuánto aporta.
+  if (/^(role|all)$/.test(process.env.AI_ENV_EVAL_ABLATE || '')) return { body: `Sos el ${role} de este repo. Seguí el prompt.`, model: field('model'), maxTurns: Number(field('maxTurns')) || null, disallowed: [] };
   // Reglas del proyecto (.claude/prompts/<rol>.md) y memoria aprobada del rol (.dev-flow/memory/<rol>.md): se suman.
   const own = read(path.join(root, '.claude', 'prompts', `${role}.md`)).trim();
   if (/^\s*-\s+\S/m.test(own)) body += `\n\n## Reglas del proyecto (.claude/prompts/${role}.md)\n\n${own}`;
@@ -133,6 +136,8 @@ function prompt({ role, issue, pr, runDir, toolsDir, base, modeHeadless, cardFil
     ...(role === 'docs' ? [`- Estado del proyecto: node "${T('skills/ticket/scripts/estado.cjs')}" --write`, `- PRD: node "${T('skills/prd/scripts/prd.cjs')}" check`] : []),
     ...(has('--pr-after') ? [`- Abrir el PR: node "${T('skills/ticket/scripts/ticket.cjs')}" pr ${issue.number} --card ${WORK_CARD} --push`] : []),
   ];
+  // Solo para evals (--ablate all): sin los scripts deterministas, queda solo el esquema de la salida.
+  if (process.env.AI_ENV_EVAL_ABLATE === 'all') scripts.splice(0, scripts.length, ...scripts.filter((x) => /Esquema/.test(x)));
   const out = role === 'auditor'
     ? 'Tu respuesta final es el JSON del veredicto (se valida con el esquema). No guardes archivos: no tenés permiso de escritura.'
     : modeHeadless
@@ -671,6 +676,14 @@ function next() {
 }
 
 // Memoria por rol: lecciones cortas, aprobadas por una persona o el Tech Lead, que se suman al system prompt del rol.
+// La línea citada en un hallazgo ("archivo:línea"), tal como está en el checkout principal. Para usarla como ejemplo malo.
+function lineAt(root, where) {
+  const m = String(where || '').match(/^([^:]+):(\d+)/);
+  if (!m) return null;
+  const t = read(path.join(root, m[1])).split('\n')[Number(m[2]) - 1];
+  return t && t.trim() ? t.trim().slice(0, 300) : null;
+}
+
 function memory() {
   const root = dossier.mainRoot(process.cwd());
   const dir = path.join(root, '.dev-flow', 'memory');
@@ -688,19 +701,64 @@ function memory() {
     console.log(`Agregada a ${path.relative(root, f)}.`);
   } else if (sub === 'propose') {
     const ms = read(path.join(root, '.dev-flow', 'metrics.jsonl')).split('\n').filter(Boolean).map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
-    const verdicts = fs.existsSync(path.join(root, '.dev-flow', 'verdicts')) ? fs.readdirSync(path.join(root, '.dev-flow', 'verdicts')).map((f) => readJson(path.join(root, '.dev-flow', 'verdicts', f))).filter(Boolean) : [];
+    const vdir = path.join(root, '.dev-flow', 'verdicts');
+    const verdicts = fs.existsSync(vdir) ? fs.readdirSync(vdir).filter((f) => f.endsWith('.json')).map((f) => ({ pr: f.replace(/\.json$/, ''), v: readJson(path.join(vdir, f)) })).filter((x) => x.v) : [];
     const byArea = {};
-    for (const v of verdicts) for (const x of v.findings || []) if (x.severity !== 'P2') (byArea[x.area] = byArea[x.area] || []).push(`${x.issue} (${x.where})`);
+    for (const { pr, v } of verdicts) for (const x of v.findings || []) if (x.severity !== 'P2') (byArea[x.area] = byArea[x.area] || []).push({ pr, ...x });
     const den = {};
     for (const m of ms) for (const d of m.denials || []) den[d] = (den[d] || 0) + 1;
     const L = ['# Propuestas de memoria (no se aplican solas)', '', `Generado ${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC a partir de veredictos y métricas. Aprobá con: dispatch memory add --role <rol> "<lección>"`, ''];
     const rep = Object.entries(byArea).filter(([, l]) => l.length >= 2).sort((a, b) => b[1].length - a[1].length);
-    if (rep.length) { L.push('## Para implementer (hallazgos que se repiten en las auditorías)', ''); for (const [area, l] of rep) L.push(`- [${area}] apareció ${l.length} veces. Ejemplos: ${l.slice(0, 2).join('; ')}`); L.push(''); }
+    if (rep.length) { L.push('## Para implementer (hallazgos que se repiten en las auditorías)', ''); for (const [area, l] of rep) L.push(`- [${area}] apareció ${l.length} veces. Ejemplos: ${l.slice(0, 2).map((x) => `${x.issue} (${x.where})`).join('; ')}`); L.push(''); }
+    // Hallazgos de juicio (no los encontró un chequeo: sin id de audit.cjs/secscan ni de una regla del proyecto) que aparecen
+    // en 3 PRs distintos o más: candidatos a regla determinista. Se proponen con las líneas citadas como ejemplo malo;
+    // la regex y el ejemplo bueno los completa quien la aprueba, y rule-add no la acepta si no pasa su prueba.
+    const known = new Set(require('../../audit/scripts/audit.cjs').KNOWN_IDS || []);
+    const judged = Object.entries(byArea).map(([area, l]) => [area, l.filter((x) => !x.id || (!known.has(x.id) && !/^(S\d{3}|regla-)/.test(x.id)))]).map(([area, l]) => [area, l, new Set(l.map((x) => x.pr))]).filter(([, , prs]) => prs.size >= 3);
+    const props = judged.map(([area, l, prs]) => ({
+      id: `regla-${String(area).toLowerCase().normalize('NFD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 30) || 'hallazgo'}`,
+      area, severity: l.filter((x) => x.severity === 'P0').length * 2 > l.length ? 'P0' : 'P1', pattern: '', flags: 'i', paths: '', exempt: '',
+      issue: l[0].issue, fix: l[0].fix || '', seen: { times: l.length, prs: [...prs].map((p) => `#${p}`) },
+      examples: { bad: l.map((x) => lineAt(root, x.where)).filter(Boolean).slice(0, 3), good: [] },
+    }));
+    if (props.length) {
+      L.push('## Para una regla determinista (mismo hallazgo de juicio en 3 PRs o más)', '', 'Completá `pattern` y al menos un ejemplo `good` en `.dev-flow/memory/rule-proposals.json`; `dispatch memory rule-check` corre la prueba de cada una y `dispatch memory rule-add --id <id>` la pasa a `.dev-flow/rules.json`, donde audit.cjs la aplica sola.', '');
+      for (const r of props) L.push(`- ${r.id} [${r.area}] en ${r.seen.prs.join(', ')}: ${r.issue}`);
+      L.push('');
+      const pf = path.join(dir, 'rule-proposals.json');
+      const prev = readJson(pf) || [];
+      const merged = [...prev.filter((x) => !props.some((p) => p.id === x.id) || x.pattern), ...props.filter((p) => !prev.some((x) => x.id === p.id && x.pattern))];
+      fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(pf, JSON.stringify(merged, null, 2) + '\n');
+    }
     const dd = Object.entries(den).filter(([, n]) => n >= 2);
     if (dd.length) { L.push('## Para la configuración (permisos denegados repetidos → workers.allowedTools)', ''); for (const [d, n] of dd) L.push(`- ${d} denegado ${n} veces`); L.push(''); }
     if (!rep.length && !dd.length) L.push('Todavía no hay patrones repetidos (hacen falta al menos dos apariciones).');
     fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(path.join(dir, 'proposals.md'), L.join('\n') + '\n');
-    console.log(`Propuestas en ${path.relative(root, path.join(dir, 'proposals.md'))} (${rep.length} de hallazgos, ${dd.length} de permisos). Ninguna se aplica sin aprobación.`);
+    console.log(`Propuestas en ${path.relative(root, path.join(dir, 'proposals.md'))} (${rep.length} de hallazgos, ${props.length} de reglas, ${dd.length} de permisos). Ninguna se aplica sin aprobación.`);
+  } else if (sub === 'rule-check' || sub === 'rule-add') {
+    const R = require('../../audit/scripts/rules.cjs');
+    const pf = path.join(dir, 'rule-proposals.json');
+    const props = readJson(pf) || [];
+    if (sub === 'rule-check') {
+      if (!props.length) { console.log('No hay reglas propuestas (dispatch memory propose).'); return; }
+      let bad = 0;
+      for (const r of props) { const p = R.validate(r); if (p.length) bad++; console.log(`${p.length ? 'FALTA' : 'OK   '} ${r.id}${p.length ? `: ${p.join('; ')}` : ''}`); }
+      process.exitCode = bad ? 1 : 0;
+      return;
+    }
+    const id = get('--id');
+    const r = props.find((x) => x.id === id);
+    if (!r) fail(`no hay una regla propuesta con id ${id || '(falta --id)'} en ${path.relative(root, pf)}`);
+    const p = R.validate(r);
+    if (p.length) fail(`${id} no pasa su prueba: ${p.join('; ')}`);
+    const rf = path.join(root, R.FILE);
+    const cur = readJson(rf) || [];
+    if (cur.some((x) => x.id === id)) fail(`${id} ya está en ${R.FILE}`);
+    const { seen, ...rule } = r;
+    for (const k of ['paths', 'exempt']) if (!rule[k]) delete rule[k];
+    fs.mkdirSync(path.dirname(rf), { recursive: true }); fs.writeFileSync(rf, JSON.stringify([...cur, rule], null, 2) + '\n');
+    fs.writeFileSync(pf, JSON.stringify(props.filter((x) => x.id !== id), null, 2) + '\n');
+    console.log(`Agregada a ${R.FILE}: audit.cjs la aplica desde la próxima auditoría (${rule.severity}, ${rule.examples.bad.length} ejemplo(s) malo(s) y ${rule.examples.good.length} bueno(s) como prueba).`);
   } else {
     const roles = get('--role') ? [get('--role')] : [...ROLES, 'explorer'];
     for (const r of roles) { const m = memoryOf(root, r); console.log(`## ${r}\n${m || '(sin lecciones)'}\n`); }

@@ -9,6 +9,7 @@
 //   - contrato: endpoints que cambian sin tocar el contrato OpenAPI del repo (API primero)
 //   - logs: console.log/print en código de servicio (va un logger estructurado con la traza)
 //   - ui: componentes con datos asíncronos sin estado de carga, error o vacío; fetch en componentes de presentación
+//   - reglas del proyecto (.dev-flow/rules.json): hallazgos repetidos que pasaron a chequeo, cada uno con su prueba (rules.cjs)
 // Más el escáner de seguridad del plugin (secretos, TLS desactivado, archivos sensibles) y la prueba de honestidad (las pruebas tienen que fallar sin el cambio).
 // Sale con 1 si hay P0, 0 si no. No reemplaza el juicio del auditor: le deja la evidencia.
 'use strict';
@@ -18,6 +19,7 @@ const { spawnSync } = require('child_process');
 const config = require('../../../lib/config.cjs');
 const { TEST } = require('../../feature-close/scripts/gates.cjs');
 const honesty = require('./test-honesty.cjs');
+const projectRules = require('./rules.cjs');
 
 const VALIDATION = /\b(zod|z\.object|joi|yup|ajv|valibot|superstruct|class-validator|pydantic|BaseModel|marshmallow|jsonschema|FluentValidation|DataAnnotations|typebox|io-ts|schema\.parse|safeParse|\.validate\()/;
 
@@ -124,6 +126,11 @@ function audit({ root, base = 'main', test, honestyOn = true }) {
   const files = addedLines(root, mb.stdout.trim());
   const findings = [...scan(root, files), ...apiAndUi(root, files)];
   const checks = [];
+  const pr = projectRules.load(root);
+  if (pr.file) {
+    findings.push(...projectRules.apply(pr.rules, files, (f) => TEST.test(f)));
+    checks.push({ name: 'reglas del proyecto', result: pr.invalid.length ? 'no-verificado' : 'pasa', detail: `${pr.rules.length} aplicada(s)${pr.invalid.length ? `; sin aplicar porque no pasan su prueba: ${pr.invalid.map((x) => `${x.id} (${x.problems[0]})`).join('; ')}` : ''}` });
+  }
   // Escáner de seguridad del plugin (secretos, archivos sensibles, dependencias…)
   const sc = path.join(__dirname, '..', '..', 'security-diff', 'scripts', 'secscan.cjs');
   if (fs.existsSync(sc)) {
@@ -160,4 +167,6 @@ if (require.main === module) {
     process.exit(r.findings.some((f) => f.severity === 'P0') ? 1 : 0);
   } catch (e) { console.error(e.message); process.exit(2); }
 }
-module.exports = { audit, scan, apiAndUi };
+// Ids de los chequeos de este script: un hallazgo con uno de estos ids no es de juicio (dispatch memory propose).
+const KNOWN_IDS = [...RULES.map((r) => r[0]), 'sin-validacion', 'test-only', 'test-skip', 'asercion-trivial', 'sin-aserciones', 'solo-snapshots', 'mock-del-sujeto', 'log-plano', 'datos-en-presentacional', 'estados-async', 'contrato-sin-actualizar', 'sin-contrato', 'pruebas-complacientes'];
+module.exports = { audit, scan, apiAndUi, KNOWN_IDS };
