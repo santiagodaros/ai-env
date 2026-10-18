@@ -2,6 +2,14 @@
 
 Cada plugin tiene su versión y cada publicación su tag `<plugin>--v<versión>`. Acá va lo que cambia para quien los usa.
 
+## 2026-10-18 — idea-lab 1.0.1
+
+- plan check rechaza que el texto que va al PRD cite ids que el PRD no tiene (p. ej. un hito H-01): lo encontró la prueba real.
+
+## 2026-10-18 — dev-flow 2.8.0
+
+- El explorer es de solo lectura de verdad: un hook usa agent_type para dejarle solo comandos de lectura y escribir su archivo de hallazgos. Un hallazgo de juicio que se repite en 3 PRs se propone como regla determinista con su prueba (memory rule-check/rule-add) y audit.cjs aplica .dev-flow/rules.json. doctor avisa cuando el repo se inicializó con una versión anterior e init completa el STATE viejo.
+
 ## 2026-10-18 — arch 1.0.2
 
 - arch-first: el contrato OpenAPI es el puerto de entrada de una API y se escribe antes que el controlador; cada regla de resiliencia y validación en su adaptador
