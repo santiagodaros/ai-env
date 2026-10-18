@@ -28,4 +28,4 @@ node evals/harness/run.cjs               # evals con el modelo real (cuesta cuot
 - Español rioplatense en todo lo que lee una persona.
 
 ## Publicar
-`node scripts/release.cjs <plugin> patch|minor|major "<qué cambió>"` sube la versión y anota `CHANGELOG.md`. Rama, CI en verde en los tres sistemas, merge a main: el workflow crea el tag `<plugin>--v<versión>`. Un plugin nuevo arranca en 1.0.0 y suma su entrada a `CHANGELOG.md`, `.claude-plugin/marketplace.json`, `shared/profiles.json` y las tablas de los instaladores (una prueba las compara).
+Primero `git fetch --tags` (sin los tags de main, `release` cree que la versión actual no se publicó y no la sube). `node scripts/release.cjs <plugin> patch|minor|major "<qué cambió>"` sube la versión y anota `CHANGELOG.md`. Rama, CI en verde en los tres sistemas, merge a main: el workflow crea el tag `<plugin>--v<versión>`. Un plugin nuevo arranca en 1.0.0 y suma su entrada a `CHANGELOG.md`, `.claude-plugin/marketplace.json`, `shared/profiles.json` y las tablas de los instaladores (una prueba las compara).

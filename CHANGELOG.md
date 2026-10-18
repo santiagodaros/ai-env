@@ -2,7 +2,7 @@
 
 Cada plugin tiene su versión y cada publicación su tag `<plugin>--v<versión>`. Acá va lo que cambia para quien los usa.
 
-## 2026-10-18 — dev-flow 2.5.0
+## 2026-10-18 — dev-flow 2.6.0
 
 - init deja en CLAUDE.md la forma de trabajo (arranque, qué es terminado, alcance, cierre) y docs/STATE.md con Siguiente paso y Bloqueos, que rehydrate muestra al arrancar y primero tras /compact; stop-verify frena debugger, .only, fit y fdescribe agregados; dispatch next da el próximo paso de cada ticket con su comando (lanzar, reanudar, recoger, PR, auditar, decisión humana, cierre)
 
