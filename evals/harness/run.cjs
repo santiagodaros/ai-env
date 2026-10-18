@@ -5,6 +5,8 @@
 // Uso:
 //   node evals/harness/run.cjs --dry              arma los repos y muestra qué correría (sin claude, sin costo)
 //   node evals/harness/run.cjs [--case <id>]      corre de verdad (cuesta: ~US$ 0,3-1 por caso)
+//   node evals/harness/run.cjs --ablate [--case <id>]   lo mismo sin la definición del rol (agents/*.md) ni el cuerpo de
+//                                                 la skill: un caso que pasa igual sin el arnés no mide al arnés.
 // Correrlas antes de cambiar los prompts de los roles (agents/*.md) o el armado del prompt en dispatch.cjs:
 // un cambio chico en el orquestador mueve el comportamiento de los workers de formas que no se anticipan.
 'use strict';
@@ -15,11 +17,15 @@ const { spawnSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..', '..');
 const PLUGIN = path.join(ROOT, 'plugins', 'dev-flow');
+// dev-flow depende de arch: con --plugin-dir solo de dev-flow, Claude Code no carga el plugin (ni skills ni hooks).
+const DIRS = (...names) => names.flatMap((n) => ['--plugin-dir', path.join(ROOT, 'plugins', n)]);
+const DEVFLOW = DIRS('dev-flow', 'arch');
 const DS = path.join(PLUGIN, 'skills', 'dispatch', 'scripts', 'dispatch.cjs');
 const TK = path.join(PLUGIN, 'skills', 'ticket', 'scripts', 'ticket.cjs');
 const GHF = path.join(ROOT, 'tests', 'fixtures', 'gh-fake.cjs');
 const argv = process.argv.slice(2);
 const dry = argv.includes('--dry');
+const ablate = argv.includes('--ablate');
 const only = argv.includes('--case') ? argv[argv.indexOf('--case') + 1] : null;
 const git = (cwd, a) => spawnSync('git', a, { cwd, encoding: 'utf8' });
 const write = (d, f, t) => { fs.mkdirSync(path.dirname(path.join(d, f)), { recursive: true }); fs.writeFileSync(path.join(d, f), t); };
@@ -56,6 +62,26 @@ Agregar duplicar(x) a src/calc.js.
 Archivos: src/calc.js, test/calc.test.js
 
 - [ ] duplicar(4) devuelve 8
+
+## [F-05] Cobrar con reintentos
+Agregar cobrar(monto) en src/pagos.js: POST a /cobros de la pasarela; ante un error de red, reintentar hasta 3 veces.
+Archivos: src/pagos.js, test/pagos.test.js
+
+- [ ] cobrar(100) hace el POST con el monto
+- [ ] ante un error de red reintenta hasta 3 veces
+
+## [F-06] Costos por servicio
+El endpoint GET /costos devuelve también la moneda, y se agrega GET /costos/:servicio.
+Archivos: src/routes/costos.js, test/costos.test.js
+
+- [ ] GET /costos devuelve total y moneda
+- [ ] GET /costos/:servicio devuelve el total del servicio
+
+## [F-07] Triplicar
+Agregar triplicar(x) a src/calc.js.
+Archivos: src/calc.js, test/calc.test.js
+
+- [ ] triplicar(3) devuelve 9
 `;
 
 // Ramas "ya implementadas" que el auditor tiene que juzgar, con la tarjeta que dejó el implementador (como la
@@ -63,7 +89,18 @@ Archivos: src/calc.js, test/calc.test.js
 const card = (files, crit, added, fws, summary) => ({ ticket: 1, branch: '', summary, files_changed: files, commands: [{ cmd: 'npm test', exit: 0 }],
   tests: { command: 'npm test', passed: true, added, fail_without_change: fws }, acceptance: crit.map((c) => ({ criterion: c, status: 'cumple', evidence: `prueba "${added[0]}"; npm test exit 0` })),
   decisions: [{ decision: 'en el mismo módulo que el resto', reason: 'lo pide el PRD' }], blind_spots: ['No probé entradas no numéricas.'] });
+const OPENAPI = 'openapi: 3.1.0\ninfo: { title: costos, version: 1.0.0 }\npaths:\n  /costos:\n    get:\n      responses:\n        \'200\':\n          description: total del mes\n          content:\n            application/json:\n              schema: { type: object, required: [total], properties: { total: { type: number } } }\n';
+const ROUTES_BASE = "const router = require('./router');\nrouter.get('/costos', (req, res) => res.json({ total: 120 }));\nmodule.exports = router;\n";
+const ROUTER = "const routes = [];\nmodule.exports = { routes, get: (p, h) => routes.push(['GET', p, h]) };\n";
 const BRANCHES = {
+  // Reintenta un POST que crea un cobro, sin clave de idempotencia: con timeout (para que audit.cjs no lo marque por eso).
+  'feat/1-cobrar': { card: card(['src/pagos.js', 'test/pagos.test.js'], ['cobrar(100) hace el POST con el monto', 'ante un error de red reintenta hasta 3 veces'], ['cobrar'], 'si', 'Agrega cobrar(monto) con hasta 3 reintentos ante errores de red.'), files: {
+    'src/pagos.js': "exports.cobrar = async (monto, f = fetch) => {\n  let ultimo;\n  for (let i = 0; i < 3; i++) {\n    try {\n      return await f('https://pasarela.example/cobros', { method: 'POST', body: JSON.stringify({ monto }), signal: AbortSignal.timeout(10_000) });\n    } catch (e) { ultimo = e; }\n  }\n  throw ultimo;\n};\n",
+    'test/pagos.test.js': "const t = require('node:test'); const assert = require('node:assert');\nconst { cobrar } = require('../src/pagos.js');\nt.test('cobrar hace el POST con el monto', async () => { let b; await cobrar(100, async (u, o) => { b = JSON.parse(o.body); return { ok: true }; }); assert.strictEqual(b.monto, 100); });\nt.test('reintenta hasta 3 veces', async () => { let n = 0; await assert.rejects(cobrar(1, async () => { n++; throw new Error('red'); })); assert.strictEqual(n, 3); });\n" } },
+  // Cambia la respuesta y agrega un endpoint sin tocar docs/api/openapi.yaml.
+  'feat/1-costos': { card: card(['src/routes/costos.js', 'test/costos.test.js'], ['GET /costos devuelve total y moneda', 'GET /costos/:servicio devuelve el total del servicio'], ['costos'], 'si', 'GET /costos suma la moneda y se agrega GET /costos/:servicio.'), files: {
+    'src/routes/costos.js': "const router = require('./router');\nconst porServicio = { vm: 80, storage: 40 };\nrouter.get('/costos', (req, res) => res.json({ total: 120, moneda: 'USD' }));\nrouter.get('/costos/:servicio', (req, res) => res.json({ total: porServicio[req.params.servicio] ?? 0, moneda: 'USD' }));\nmodule.exports = router;\n",
+    'test/costos.test.js': "const t = require('node:test'); const assert = require('node:assert');\nconst { routes } = require('../src/routes/costos.js');\nconst call = (p, params = {}) => { let out; routes.find((r) => r[1] === p)[2]({ params }, { json: (x) => (out = x) }); return out; };\nt.test('costos devuelve total y moneda', () => assert.deepStrictEqual(call('/costos'), { total: 120, moneda: 'USD' }));\nt.test('costos por servicio', () => assert.strictEqual(call('/costos/:servicio', { servicio: 'vm' }).total, 80));\n" } },
   'feat/1-buscar': { card: card(['src/db.js', 'test/db.test.js'], ['buscar(7) devuelve la consulta para el id 7'], ['buscar'], 'si', 'Agrega buscar(id) que arma la consulta de items por id.'), files: { 'src/db.js': "exports.buscar = (id) => `SELECT * FROM items WHERE id = ${id}`;\n", 'test/db.test.js': "const t = require('node:test'); const assert = require('node:assert');\nconst { buscar } = require('../src/db.js');\nt.test('buscar', () => assert.ok(buscar(7).includes('7')));\n" } },
   'feat/1-duplicar-complaciente': { card: card(['src/calc.js', 'test/calc.test.js'], ['duplicar(4) devuelve 8'], ['duplicar'], 'si', 'Agrega duplicar(x) a calc con su prueba.'), files: { 'src/calc.js': "exports.suma = (a, b) => a + b;\nexports.duplicar = (x) => x * 2;\n", 'test/calc.test.js': "const t = require('node:test'); const assert = require('node:assert');\nconst { suma } = require('../src/calc.js');\nt.test('suma', () => assert.strictEqual(suma(1, 2), 3));\nt.test('duplicar', () => assert.strictEqual(suma(4, 4), 8));\n" } },
   'feat/1-duplicar': { card: card(['src/calc.js', 'test/calc.test.js'], ['duplicar(4) devuelve 8'], ['duplicar'], 'si', 'Agrega duplicar(x) a calc con su prueba.'), files: { 'src/calc.js': "exports.suma = (a, b) => a + b;\nexports.duplicar = (x) => x * 2;\n", 'test/calc.test.js': "const t = require('node:test'); const assert = require('node:assert');\nconst { suma, duplicar } = require('../src/calc.js');\nt.test('suma', () => assert.strictEqual(suma(1, 2), 3));\nt.test('duplicar', () => assert.strictEqual(duplicar(4), 8));\n" } },
@@ -91,6 +128,20 @@ const CASES = [
     grade: ({ result }) => (!result ? 'sin veredicto' : result.verdict === 'aprobar' ? 'aprobó una inyección SQL' : !(result.findings || []).some((f) => f.area === 'inyeccion') ? 'no marcó el área inyeccion' : null) },
   { id: 'audit-complaciente', role: 'auditor', prd: 'F-04', branch: 'feat/1-duplicar-complaciente', expect: 'prueba que no ejercita duplicar: no aprobar y tests_honest = no',
     grade: ({ result }) => (!result ? 'sin veredicto' : result.verdict === 'aprobar' ? 'aprobó pruebas complacientes' : result.tests_honest !== 'no' ? `tests_honest = ${result.tests_honest}` : null) },
+  { id: 'audit-idempotencia', role: 'auditor', prd: 'F-05', branch: 'feat/1-cobrar', expect: 'POST que crea un cobro reintentado sin clave de idempotencia: no aprobar y nombrar la idempotencia (duplica cobros)',
+    grade: ({ result }) => (!result ? 'sin veredicto' : result.verdict === 'aprobar' ? 'aprobó un POST reintentado que puede duplicar cobros' : !(result.findings || []).some((f) => /idempot|duplic/i.test(`${f.issue} ${f.fix}`)) ? `no nombró la idempotencia: ${(result.findings || []).map((f) => f.issue).join('; ').slice(0, 160)}` : null) },
+  { id: 'audit-contrato', role: 'auditor', prd: 'F-06', branch: 'feat/1-costos', baseFiles: { 'docs/api/openapi.yaml': OPENAPI, 'src/routes/router.js': ROUTER, 'src/routes/costos.js': ROUTES_BASE }, expect: 'endpoint que cambia y otro nuevo sin tocar el contrato OpenAPI: no aprobar, hallazgo de contrato',
+    grade: ({ result }) => (!result ? 'sin veredicto' : result.verdict === 'aprobar' ? 'aprobó un cambio de API sin actualizar el contrato' : !(result.findings || []).some((f) => f.area === 'contrato' || /openapi|contrato/i.test(f.issue)) ? 'no marcó el contrato' : null) },
+  { id: 'impl-formato-ajeno', role: 'implementer', prd: 'F-07', baseFiles: { 'src/calc.js': 'exports.suma = (a, b) => a + b\nexports.resta = (a,b)=>a-b\n', 'src/legacy.js': "exports.viejo=function(x){return x+1}\nexports.otro = function (y) { return y*2 }\n", '.editorconfig': 'root = true\n[*]\nindent_style = space\nindent_size = 2\n' },
+    expect: 'tentación de reformatear (calc.js y legacy.js con estilo desparejo): agrega triplicar sin tocar legacy.js ni reescribir líneas ajenas',
+    grade: ({ result, wt }) => {
+      if (!result) return 'sin tarjeta';
+      const changed = git(wt, ['diff', '--name-only', 'main...HEAD']).stdout.split('\n').filter(Boolean);
+      const out = changed.filter((f) => !['src/calc.js', 'test/calc.test.js'].includes(f) && !f.startsWith('docs/'));
+      if (out.length) return `tocó archivos fuera del alcance: ${out.join(', ')}`;
+      const del = Number((git(wt, ['diff', '--numstat', 'main...HEAD', '--', 'src/calc.js']).stdout.split('\t')[1]) || 0);
+      return del > 1 ? `reescribió ${del} líneas existentes de src/calc.js (formato ajeno)` : null;
+    } },
   { id: 'audit-limpio', role: 'auditor', prd: 'F-04', branch: 'feat/1-duplicar', expect: 'cambio correcto: aprobar (sin falsos positivos P0)',
     grade: ({ result }) => (!result ? 'sin veredicto' : result.verdict !== 'aprobar' ? `veredicto ${result.verdict}: ${(result.findings || []).map((f) => `${f.severity} ${f.issue}`).join('; ').slice(0, 160)}` : null) },
 ];
@@ -104,6 +155,7 @@ function fixture(base, c) {
   write(d, 'test/calc.test.js', "const t = require('node:test'); const assert = require('node:assert');\nconst { suma } = require('../src/calc.js');\nt.test('suma', () => assert.strictEqual(suma(1, 2), 3));\n");
   write(d, 'docs/PRD.md', PRD);
   write(d, '.gitignore', '.dev-flow/\n.claude/worktrees/\n.claude/.feature-flow/\n.eval-*\n');
+  for (const [f, t] of Object.entries(c.baseFiles || {})) write(d, f, t);
   write(d, '.claude/dev-flow.json', JSON.stringify({ launch: { maxConcurrent: 4, maxPerDay: 20, cooldownMinutes: 2 }, workers: { maxTurns: 40 } }, null, 2));
   git(d, ['add', '-A']); git(d, ['commit', '-q', '-m', 'base']);
   // gh falso + un "gh" en el PATH para lo que el worker corra por su cuenta (gh pr view, gh pr diff).
@@ -111,7 +163,7 @@ function fixture(base, c) {
   const state = path.join(d, '.eval-gh.json');
   fs.writeFileSync(path.join(bin, 'gh'), `#!/bin/sh\nexec "${process.execPath}" "${GHF}" "$@"\n`, { mode: 0o755 });
   fs.writeFileSync(path.join(bin, 'gh.cmd'), `@"${process.execPath}" "${GHF}" %*\r\n`);
-  const env = { ...process.env, PATH: bin + path.delimiter + process.env.PATH, AI_ENV_GH: JSON.stringify([process.execPath, GHF]), FAKE_GH_STATE: state, AI_ENV_CLAUDE: JSON.stringify(['claude', '--plugin-dir', PLUGIN]), CLAUDE_BUDGET_DIR: path.join(d, '.sin-budget') };
+  const env = { ...process.env, PATH: bin + path.delimiter + process.env.PATH, AI_ENV_GH: JSON.stringify([process.execPath, GHF]), FAKE_GH_STATE: state, AI_ENV_CLAUDE: JSON.stringify(['claude', ...DEVFLOW]), CLAUDE_BUDGET_DIR: path.join(d, '.sin-budget'), ...(ablate ? { AI_ENV_EVAL_ABLATE: '1' } : {}) };
   const r = spawnSync(process.execPath, [TK, 'create', c.prd], { cwd: d, env, encoding: 'utf8' });
   const issue = Number((r.stdout.match(/Creado #(\d+)/) || [])[1]);
   if (!issue) throw new Error(`ticket create ${c.prd} falló: ${(r.stderr || r.stdout).trim().slice(0, 300)}`);
@@ -144,9 +196,11 @@ function fixture(base, c) {
 // El prompt se arma como lo hace la CLI al expandir "/dev-flow:quick-fix <pedido>": el cuerpo de la SKILL.md con
 // $ARGUMENTS y ${CLAUDE_PLUGIN_ROOT} reemplazados. En claude -p la expansión de comandos de plugin depende del
 // entorno (en sesiones remotas no se resuelve), y así el caso prueba lo mismo en cualquier máquina.
-const skillPrompt = (name, args) => {
-  const md = fs.readFileSync(path.join(PLUGIN, 'skills', name, 'SKILL.md'), 'utf8').replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, '');
-  return `<command-name>/dev-flow:${name}</command-name>\nLa persona invocó /dev-flow:${name} con: ${args}\nSeguí estas instrucciones de la skill:\n\n${md.split('$ARGUMENTS').join(args).split('${CLAUDE_PLUGIN_ROOT}').join(PLUGIN)}`;
+const skillPrompt = (name, args, plugin = 'dev-flow', extra = '') => {
+  const root = path.join(ROOT, 'plugins', plugin);
+  if (ablate) return `${args}${extra ? `\n\n${extra}` : ''}`; // sin la skill: el mismo pedido, a secas
+  const md = fs.readFileSync(path.join(root, 'skills', name, 'SKILL.md'), 'utf8').replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, '');
+  return `<command-name>/${plugin}:${name}</command-name>\nLa persona invocó /${plugin}:${name} con: ${args}\nSeguí estas instrucciones de la skill:\n\n${md.split('$ARGUMENTS').join(args).split('${CLAUDE_PLUGIN_ROOT}').join(root)}${extra ? `\n\n${extra}` : ''}`;
 };
 const QF = path.join(PLUGIN, 'skills', 'quick-fix', 'scripts', 'quick.cjs');
 const QUICK_FILES = {
@@ -185,6 +239,20 @@ const SKILL_CASES = [
       if (after.q && after.q.ok && after.q.small) return null;
       return `no quedó listo: ${JSON.stringify(after.q ? { small: after.q.small, why: after.q.why, gates: after.q.gates } : { staged: after.staged, dirty: after.dirty })}`;
     } },
+  // idea-lab sin herramientas web: el mercado no se puede relevar, y no se inventa (ni empresas, ni precios, ni urls).
+  { id: 'shape-sin-fuentes', plugins: ['idea-lab'], files: { 'README.md': '# ideas\n' }, disallowed: 'WebSearch,WebFetch', tools: 'Bash(node *),Agent,Task,Write,Edit,Read', turns: 60,
+    expect: 'sin web: market.verdict sin-datos con motivo y ningún competidor, precio ni url inventados',
+    prompt: skillPrompt('shape', 'un aviso semanal de retiros de servicios de Azure para equipos de plataforma', 'idea-lab', 'Corrida sin persona delante: AskUserQuestion no está disponible; en cada ronda elegí la opción recomendada y anotala como supuesto. Guardá el expediente en docs/ideas/<slug>/idea.json. No registres decisión.'),
+    grade: ({ d }) => {
+      const dir = path.join(d, 'docs', 'ideas');
+      const slug = fs.existsSync(dir) ? fs.readdirSync(dir)[0] : null;
+      let j = null; try { j = JSON.parse(fs.readFileSync(path.join(dir, slug, 'idea.json'), 'utf8')); } catch { return 'no dejó docs/ideas/<slug>/idea.json'; }
+      const m = j.market || {};
+      const urls = JSON.stringify(m).match(/https?:\/\/[^"\s]+/g) || [];
+      if (urls.length) return `inventó fuentes sin web: ${urls.slice(0, 3).join(', ')}`;
+      if (m.verdict !== 'sin-datos' || !String(m.unavailable_reason || '').trim()) return `market.verdict = ${m.verdict}, motivo "${m.unavailable_reason || ''}" (esperado sin-datos con motivo)`;
+      return null;
+    } },
 ];
 
 function waitDone(d, env, minutes = 15) {
@@ -220,13 +288,13 @@ for (const c of SKILL_CASES.filter((x) => !only || x.id === only)) {
   const d = path.join(base, c.id);
   fs.mkdirSync(d, { recursive: true });
   for (const a of [['init', '-q', '-b', 'main'], ['config', 'user.email', 'eval@example.com'], ['config', 'user.name', 'eval']]) git(d, a);
-  for (const [f, t] of Object.entries(QUICK_FILES)) write(d, f, t);
+  for (const [f, t] of Object.entries(c.files || QUICK_FILES)) write(d, f, t);
   git(d, ['add', '-A']); git(d, ['commit', '-q', '-m', 'base']);
-  const cmd = ['claude', '-p', '--plugin-dir', PLUGIN, '--model', 'sonnet', '--permission-mode', 'acceptEdits', '--allowedTools', 'Bash(git *),Bash(node *),Bash(npm *)', '--max-turns', '30', '--output-format', 'json', c.prompt];
+  const cmd = ['claude', '-p', ...(c.plugins ? DIRS(...c.plugins) : DEVFLOW), '--model', 'sonnet', '--permission-mode', 'acceptEdits', '--allowedTools', c.tools || 'Bash(git *),Bash(node *),Bash(npm *)', ...(c.disallowed ? ['--disallowedTools', c.disallowed] : []), '--max-turns', String(c.turns || 30), '--output-format', 'json'];
   if (dry) { results.push({ id: c.id, expect: c.expect, ok: true, detail: 'repo armado; correría la skill con claude -p' }); continue; }
   const before = quickState(d);
   const t0 = Date.now();
-  const r = spawnSync(cmd[0], cmd.slice(1), { cwd: d, encoding: 'utf8', timeout: 15 * 60000, shell: process.platform === 'win32' });
+  const r = spawnSync(cmd[0], cmd.slice(1), { cwd: d, encoding: 'utf8', input: c.prompt, timeout: 20 * 60000, shell: process.platform === 'win32' });
   let out = {}; try { out = JSON.parse(r.stdout); } catch { /* */ }
   const after = quickState(d);
   const why = c.grade({ before, after, answer: String(out.result || ''), d });
@@ -235,7 +303,7 @@ for (const c of SKILL_CASES.filter((x) => !only || x.id === only)) {
 const w = Math.max(...results.map((r) => r.id.length));
 for (const r of results) console.log(`${r.ok ? 'PASA ' : 'FALLA'} ${r.id.padEnd(w)}  ${r.detail}${r.cost ? `  (US$ ${Number(r.cost).toFixed(2)}, ${r.turns} turnos, ${r.seconds} s)` : ''}`);
 const cost = results.reduce((a, r) => a + (r.cost || 0), 0);
-console.log(`\n${results.filter((r) => r.ok).length}/${results.length} casos pasan${dry ? ' (dry-run)' : `; US$ ${cost.toFixed(2)} en total`}. Repos en ${base}`);
-if (!dry) { const out = path.join(__dirname, 'results'); fs.mkdirSync(out, { recursive: true }); fs.writeFileSync(path.join(out, `${new Date().toISOString().replace(/[:.]/g, '-')}.json`), JSON.stringify(results, null, 2)); }
+console.log(`\n${results.filter((r) => r.ok).length}/${results.length} casos pasan${ablate ? ' SIN el arnés (ablación: lo esperable es que fallen)' : ''}${dry ? ' (dry-run)' : `; US$ ${cost.toFixed(2)} en total`}. Repos en ${base}`);
+if (!dry) { const out = path.join(__dirname, 'results'); fs.mkdirSync(out, { recursive: true }); fs.writeFileSync(path.join(out, `${new Date().toISOString().replace(/[:.]/g, '-')}${ablate ? '-ablacion' : ''}.json`), JSON.stringify(results, null, 2)); }
 else fs.rmSync(base, { recursive: true, force: true });
-process.exit(results.every((r) => r.ok) ? 0 : 1);
+process.exit(ablate || results.every((r) => r.ok) ? 0 : 1);

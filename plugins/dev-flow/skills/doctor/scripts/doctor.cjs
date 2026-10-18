@@ -43,7 +43,7 @@ const us = json(path.join(home, '.claude', 'settings.json')) || {};
 const ps = json(path.join(cwd, '.claude', 'settings.json')) || {};
 const pl = json(path.join(cwd, '.claude', 'settings.local.json')) || {};
 const en = { ...(us.enabledPlugins || {}), ...(ps.enabledPlugins || {}), ...(pl.enabledPlugins || {}) };
-for (const p of ['guard', 'arch', 'dev-flow', 'app-review', 'cloud-ops', 'front-studio']) {
+for (const p of ['guard', 'arch', 'dev-flow', 'idea-lab', 'app-review', 'cloud-ops', 'front-studio']) {
   const k = Object.keys(en).find((x) => x === p || x.startsWith(p + '@'));
   if (k && en[k]) add('OK', `plugin ${p}`, k);
   else if (p === 'dev-flow') add('OK', 'plugin dev-flow', 'cargado en esta sesión (no figura en settings: --plugin-dir o sincronizado desde tu cuenta)');
@@ -104,6 +104,15 @@ else {
   try { stateRel = require('../../../lib/config.cjs').load(cwd).state || stateRel; } catch { /* config inválida */ }
   if (stateRel === 'docs/ESTADO.md' && !has('docs/STATE.md')) add('INFO', 'estado del proyecto', 'docs/ESTADO.md (nombre anterior; sigue funcionando). Para unificar: git mv docs/ESTADO.md docs/STATE.md');
   else add(has(stateRel) ? 'OK' : 'INFO', 'estado del proyecto', has(stateRel) ? stateRel : `falta ${stateRel}: /dev-flow:init`);
+  // Repo inicializado con una versión anterior de init: le faltan piezas que las sesiones de hoy esperan.
+  // /dev-flow:init las agrega sin tocar lo que ya hay (solo agrega al final).
+  const read = (f) => { try { return fs.readFileSync(path.join(cwd, f), 'utf8'); } catch { return null; } };
+  const cm = read('CLAUDE.md'), st = read(stateRel);
+  const old = [];
+  if (cm !== null && cm.includes('<!-- commands:start -->') && !cm.includes('<!-- harness:start -->')) old.push('CLAUDE.md sin la forma de trabajo (arranque, terminado, alcance)');
+  if (st !== null) { try { const gaps = require('../../init/scripts/init.cjs').stateGaps(st); if (gaps.length) old.push(`${stateRel} sin ${gaps.map((h) => `"${h}"`).join(' ni ')}`); } catch { /* init no disponible */ } }
+  if (old.length) add('AVISO', 'repo inicializado con una versión anterior', `${old.join('; ')}. Corré /dev-flow:init: agrega lo que falta al final y no toca lo tuyo`);
+  else if (cm !== null && cm.includes('<!-- harness:start -->')) add('OK', 'inicialización al día', 'forma de trabajo en CLAUDE.md y STATE con siguiente paso y bloqueos');
   // Perfil activo: plugins de ai-env habilitados según usuario < repo (.claude/settings.json) < local (.claude/settings.local.json).
   try {
     const PR = require('../../../lib/profiles.json');

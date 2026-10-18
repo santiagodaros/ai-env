@@ -5,6 +5,7 @@
 // - Permite docs, PRD, estado, .claude/, .dev-flow/ y cualquier archivo dentro de un worktree (ahí trabajan los
 //   workers y los subagentes con isolation: worktree). La regla es por ruta: no depende de quién llama.
 // - No aplica a los workers lanzados por dispatch o feature-flow (FEATURE_FLOW_CHILD).
+// - El subagente explorer (agent_type en el evento) solo escribe su archivo de hallazgos en .dev-flow/: ver readonly.cjs.
 // Limitación conocida: no ve escrituras hechas con Bash (sed -i, >). Las bloquea igual el auditor y las compuertas.
 // Apagarlo: AI_ENV_HOOKS_SKIP=lead-guard, o "lead": {"enforce": false}.
 const fs = require('fs');
@@ -12,15 +13,23 @@ const path = require('path');
 const { run, block, projectDir } = require('./lib.cjs');
 const config = require('../lib/config.cjs');
 const { CODE, NOT_CODE } = require('../skills/feature-close/scripts/gates.cjs');
+const { isReadonly, readonlyWriteOk } = require('./readonly.cjs');
 
 const real = (p) => { try { return fs.realpathSync.native(p); } catch { return path.resolve(p); } };
 
 run('lead-guard', (input) => {
-  if (process.env.FEATURE_FLOW_CHILD) return;
   const ti = input.tool_input || {};
   const file = ti.file_path || ti.notebook_path || ti.path;
-  if (!file) return;
   const proj = projectDir(input);
+  if (isReadonly(input)) {
+    // Ruta del archivo (resolviendo la carpeta, que puede no existir todavía) relativa al proyecto o a su repo.
+    const abs = file ? path.join(real(path.dirname(path.resolve(proj, file))), path.basename(file)) : '';
+    const rels = [real(proj), real(config.repoRoot(proj))].map((b) => path.relative(b, abs).split(path.sep).join('/'));
+    if (input.tool_name !== 'Write' || !abs || !rels.some(readonlyWriteOk)) block(`${input.agent_type} es de solo lectura: solo escribe su archivo de hallazgos (.dev-flow/tickets/<N>/<tema>.md), no ${(abs && rels[0]) || input.tool_name}.`, 'readonly-agent-write');
+    return;
+  }
+  if (process.env.FEATURE_FLOW_CHILD) return;
+  if (!file) return;
   const root = config.repoRoot(proj);
   const cfg = config.load(root);
   if (!cfg.lead || cfg.lead.enforce !== true) return;

@@ -100,6 +100,12 @@ function evaluate(plan, idea) {
   add(ns && !arr(p.metrics_instrumentation).some((m) => m && m.metric === ns), `metrics_instrumentation: falta la métrica estrella ("${ns}")`);
   add(!(p.rollout && str(p.rollout.strategy, 5) && str(p.rollout.rollback, 5)), 'rollout: strategy y rollback');
   for (const d of arr(p.decisions_pending)) add(!(d && str(d.decision, 5) && arr(d.options).length >= 2), `decisión pendiente sin al menos dos opciones ("${String((d && d.decision) || '').slice(0, 40)}"): va a un ADR`);
+  // Lo que va al PRD no puede citar ids que el PRD no tiene (p. ej. el id de un hito, H-01): /dev-flow:prd check lo
+  // rechaza y la rebanada del ticket sale con una cita rota. Se nombra el hito por su objetivo.
+  const prdIds = new Set([...all, 'G-90']);
+  const prdText = [...arr(p.globals).map((g) => g && g.text), ...arr(p.scope_out), ...arr(p.no_gos), ...arr(p.slices).flatMap((x) => [x && x.why, x && x.out_of_scope, ...arr(x && x.criteria)])].map((x) => String(x || '')).join('\n');
+  const broken = [...new Set([...prdText.matchAll(/\b([A-Z]{1,4}-\d{1,4})\b/g)].map((m) => m[1]).filter((r) => !/^ADR-/.test(r) && !prdIds.has(r)))];
+  add(broken.length, `el texto que va al PRD cita ${broken.join(', ')}, que no es una sección del PRD (los hitos no van): nombralo por su objetivo`);
   return { ready: !errs.length, errors: errs };
 }
 

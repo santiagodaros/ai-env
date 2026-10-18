@@ -111,6 +111,8 @@ module.exports = function ideaLab({ check }) {
   check('plan: un hito que no entrega algo usable se rechaza', /user_visible: true/.test(pcheck({ ...plan, milestones: [{ ...plan.milestones[0], user_visible: false }] }).out));
   check('plan: sin instrumentar la métrica estrella no está listo', /falta la métrica estrella/.test(pcheck({ ...plan, metrics_instrumentation: [{ metric: 'otra', event: 'algo' }] }).out));
   check('plan: más de 7 criterios en una rebanada pide partirla', /partila/.test(pcheck({ ...plan, slices: plan.slices.map((s, k) => (k === 0 ? { ...s, criteria: Array.from({ length: 8 }, (_, n) => `criterio número ${n}`) } : s)) }).out));
+  // Hallado en la prueba real (headless): el modelo citó el hito H-01 en un no_go y el PRD generado no pasaba prd check.
+  check('plan: el texto que va al PRD no puede citar un hito (H-01) ni ids que el PRD no tiene', /cita H-01, que no es una sección del PRD/.test(pcheck({ ...plan, no_gos: ['Empezar H-01 antes de las entrevistas'] }).out) && !/cita/.test(pcheck({ ...plan, no_gos: ['Nada fuera de F-01 hasta validar (ver ADR-0002)'] }).out));
   r = run(P, ['render', slug]);
   const prdF = path.join(tmp, 'docs', 'PRD.md');
   check('plan: render escribe PLAN.md y docs/PRD.md', r.code === 0 && fs.existsSync(path.join(tmp, 'docs', 'ideas', slug, 'PLAN.md')) && fs.existsSync(prdF), r.out);

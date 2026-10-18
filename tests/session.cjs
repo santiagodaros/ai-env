@@ -50,6 +50,21 @@ module.exports = function session({ check }) {
   const after = fs.readFileSync(path.join(d, 'CLAUDE.md'), 'utf8');
   check('init: a un CLAUDE.md con solo comandos le agrega la forma de trabajo al final, sin duplicar comandos', pv.status === 'would-do' && after.startsWith(before) && after.split('<!-- commands:start -->').length === 2 && after.includes('<!-- harness:start -->'), JSON.stringify(pv));
 
+  // --- Repo inicializado con una versión anterior: doctor lo marca e init lo completa (dev-flow 2.8)
+  const DR = path.join(DF, 'skills', 'doctor', 'scripts', 'doctor.cjs');
+  const doctor = (dd) => { const r = spawnSync(process.execPath, [DR, '--json'], { cwd: dd, encoding: 'utf8', env: { ...env, CLAUDE_PROJECT_DIR: dd } }); try { return JSON.parse(r.stdout); } catch { return []; } };
+  d = repo({ 'package.json': pkg, 'CLAUDE.md': '# x\n\n<!-- commands:start -->\n## Comandos\n- test: `npm run test`\n<!-- commands:end -->\n', 'docs/STATE.md': '# STATE\n\n## Decisiones\n- usar SQLite\n\n## Hecho\n- lista\n' });
+  let row = doctor(d).find((x) => /versión anterior/.test(x.name));
+  check('doctor: un repo inicializado con una versión anterior se marca, con qué falta y /dev-flow:init', row && row.res === 'AVISO' && /forma de trabajo/.test(row.detail) && /"Siguiente paso" ni "Bloqueos"/.test(row.detail) && /\/dev-flow:init/.test(row.detail), JSON.stringify(row));
+  const stBefore = fs.readFileSync(path.join(d, 'docs', 'STATE.md'), 'utf8');
+  fs.writeFileSync(planF, JSON.stringify({ v: 1, approved: ['claude-md', 'state'], answers: { mode: 'features' } }));
+  const stp = J(d, ['preview', '--plan', planF]).j.steps.find((s) => s.id === 'state');
+  check('init: a un STATE sin "Siguiente paso" ni "Bloqueos" le ofrece agregarlos', stp && stp.status === 'would-do' && /Siguiente paso/.test(JSON.stringify(stp)), JSON.stringify(stp));
+  apply(d, ['claude-md', 'state']);
+  const stAfter = fs.readFileSync(path.join(d, 'docs', 'STATE.md'), 'utf8');
+  check('init: los agrega al final sin tocar lo que había, y doctor queda al día', stAfter.startsWith(stBefore) && /^## Siguiente paso$/m.test(stAfter) && /^## Bloqueos$/m.test(stAfter) && !doctor(d).some((x) => /versión anterior/.test(x.name)) && doctor(d).some((x) => x.name === 'inicialización al día' && x.res === 'OK'));
+  check('init: una segunda corrida no vuelve a agregar las secciones', J(d, ['preview', '--plan', planF]).j.steps.find((s) => s.id === 'state').status === 'nothing');
+
   // --- rehydrate: siguiente paso y bloqueos primero
   d = repo({ 'docs/STATE.md': '# STATE\n\n## Siguiente paso\n- Terminar el export a CSV\n\n## Bloqueos\n- Falta la credencial de prueba\n\n## Decisiones\n- \n\n## Hecho\n- Lista de gastos\n' });
   const hook = (src) => spawnSync(process.execPath, [RH], { input: JSON.stringify({ source: src, cwd: d }), encoding: 'utf8', env: { ...env, CLAUDE_PROJECT_DIR: d } }).stdout;

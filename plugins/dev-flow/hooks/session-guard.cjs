@@ -4,10 +4,16 @@
 //   (feature-flow/scripts/launch.cjs y dispatch/scripts/dispatch.cjs).
 // - Cualquier --launch de esos lanzadores pide confirmación humana; encadenado con otros comandos, se bloquea.
 // - Una sesión lanzada por ellos (FEATURE_FLOW_CHILD=1) no puede lanzar nada.
+// - El subagente explorer (agent_type en el evento) solo corre comandos que leen: ver readonly.cjs.
 const { run, block, ask } = require('./lib.cjs');
+const { isReadonly, readonlyBash } = require('./readonly.cjs');
 
 run('session-guard', (input) => {
   const cmd = String((input.tool_input || {}).command || '');
+  if (isReadonly(input)) {
+    const why = readonlyBash(cmd);
+    if (why) block(`${input.agent_type} es de solo lectura: "${why}" no se permite. Usá git log/show/diff/grep, ls, cat, grep, rg o find, sin redirecciones; los hallazgos van con Write al expediente.`, 'readonly-agent-bash');
+  }
   const SPAWN = /(^|[\s;&|(])claude(\.exe|\.cmd)?(\s[^;&|\n]*?)?\s(--bg|--background|-w|--worktree|--tmux|-p|--print)(\s|=|$)/;
   const LAUNCHER = String.raw`(?:feature-flow[\\/]scripts[\\/]launch|dispatch[\\/]scripts[\\/]dispatch)\.cjs`;
   // Solo cuenta como lanzador el comando que es exactamente `node <ruta>/(launch|dispatch).cjs [subcomando] [opciones]`,

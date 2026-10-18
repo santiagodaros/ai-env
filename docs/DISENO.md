@@ -71,6 +71,12 @@ docs/                             este archivo, PRUEBA-REAL.md, ejemplos de CLAU
 | Backend y frontend: reglas donde se aplican, señales donde se ven | No se sumaron skills: `api-call-rules` y `frontend-rules` (automáticas por tipo de archivo, en `app` y `frontend`) ganaron contrato OpenAPI primero, reintentos solo idempotentes, circuit breaker cuando hay tráfico sostenido, logs estructurados con trace id, tipos generados del contrato, los cuatro estados de datos asíncronos y datos fuera de los componentes de presentación. Cada regla cae en una capa de la hexagonal (contrato = puerto de entrada, resiliencia = adaptador de salida), que sigue siendo la regla de dependencias. Lo verificable lo marca `audit`: endpoint sin tocar el contrato (P1), log plano en servicio, estados faltantes y datos en presentación (P2, señales para el auditor). Lo que pide juicio (si un reintento es idempotente, si hace falta un circuit breaker) queda para el auditor |
 | El tamaño sube el modelo solo del implementer; el auditor nunca baja | En L, `docs` y `sre` escalan turnos y esfuerzo pero conservan su modelo (haiku y sonnet): el razonamiento extra lo necesita quien implementa. Con presión de cuota, `dispatch` no degrada solo: informa cuántos tickets más entrarían con los implementers L en sonnet y lo aplica solo con `--allow-downgrade-implementer`. El auditor queda fuera: es el control zero-trust, y degradarlo justo en los lotes grandes debilitaría la compuerta sin que el veredicto lo muestre. La corrida guarda `downgradedFrom` |
 
+| El explorer es de solo lectura por hook, no por pedido | Claude Code manda `agent_type` (`<plugin>:<nombre>`) en `PreToolUse` cuando la herramienta la pide un subagente (verificado con 2.1.302 registrando la entrada real). `session-guard` y `lead-guard` lo usan: el explorer corre solo comandos de lectura (git log/show/diff/grep, ls, cat, rg, find sin acciones, sed -n) y su único Write es el archivo de hallazgos en `.dev-flow/tickets/<N>/`. No suma procesos a `PreToolUse`: va en los dos hooks que ya corren. Sacarle Bash lo dejaba sin `git log`, que es la mitad de explorar |
+| Lo que se repite tres veces pasa a regla con su prueba | `dispatch memory propose` cuenta los hallazgos de juicio (sin id de un chequeo) por área en PRs distintos; con 3 o más propone una regla en `.dev-flow/memory/rule-proposals.json` con las líneas citadas como ejemplo malo. La regex y el ejemplo bueno los completa una persona; `rule-add` no la acepta si no encuentra todos los malos o marca un bueno, y `audit.cjs` aplica `.dev-flow/rules.json` sola. Una regla rota no se aplica y queda a la vista en los chequeos. Un script no puede inventar la regex; sí puede exigir que la regex cumpla su prueba |
+| `doctor` avisa cuando el repo quedó viejo | Un repo inicializado antes de 2.6 tiene CLAUDE.md sin la forma de trabajo y un STATE sin "Siguiente paso" ni "Bloqueos": nada falla, pero la sesión arranca sin lo que hoy se espera. `doctor` lo marca y `init` lo completa agregando al final, sin tocar lo que había |
+| Evals que el arnés tiene que ganar | Un caso que pasa igual sin la definición del rol o sin la skill no mide al arnés. `run.cjs --ablate` corre los mismos casos sin `agents/*.md` (workers) y sin el cuerpo de la skill; los casos nuevos (POST reintentado sin idempotencia, endpoint sin contrato, tentación de reformatear, mercado sin fuentes) están armados para que la ablación los haga fallar |
+| Las evals cargan dev-flow con arch | dev-flow declara `arch` como dependencia: con `--plugin-dir` solo de dev-flow, Claude Code 2.1.302 no carga el plugin (ni skills ni hooks ni agentes) y lo registra solo en el log de depuración. Lo encontró la prueba real en Linux; las evals y las pruebas con `--plugin-dir` pasan los dos |
+
 ## Lo que un plugin no puede llevar
 
 Statusline, permisos (`permissions.deny`) y `CLAUDE.md` o `rules/`. Se resuelven con `/dev-flow:setup`, con los hooks `secret-read` y `bash-guard`, y con skills que declaran `paths`. Tampoco puede haber una carpeta `bin/` en la raíz de un plugin: impide instalarlo en la app de Claude (una prueba lo verifica).
@@ -106,7 +112,7 @@ Se edita siempre la fuente y se corre `node scripts/sync-shared.cjs`. Editar una
    - `patch`: arreglo que no cambia el comportamiento esperado.
    - `minor`: skill, hook o regla nueva; nada de lo anterior deja de funcionar.
    - `major`: cambia cómo se invoca algo, se quita una skill o un hook bloquea algo que antes pasaba sin aviso.
-3. Commit y push a `main`. El workflow `release` crea y sube el tag `<plugin>--v<versión>` de cada versión nueva.
+3. Rama, commit, PR a `main`. `main` está protegida: sin push directo ni force-push, y el merge necesita los siete checks del CI en verde (`check` y `installer` en Linux, Windows y macOS, y `validate`). Al mergear, el workflow `release` crea y sube el tag `<plugin>--v<versión>` de cada versión nueva.
 
 No se reescribe una versión publicada: si algo salió mal, se publica otra.
 
@@ -139,7 +145,7 @@ claude plugin validate --strict .
 
 Los tres primeros corren en el hook de git (`git config core.hooksPath .githooks`). `check.cjs` bloquea GUIDs, emails, secretos y los términos de `.private-terms`. El repo es público: sin nombres de cliente ni datos de tenant en ningún archivo.
 
-Para probar sin instalar: `claude --plugin-dir plugins/guard --plugin-dir plugins/dev-flow`.
+Para probar sin instalar: `claude --plugin-dir plugins/guard --plugin-dir plugins/dev-flow --plugin-dir plugins/arch` (dev-flow depende de arch: sin él no carga).
 
 ## Lo que el CI no puede probar
 
