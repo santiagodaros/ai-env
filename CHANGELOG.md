@@ -2,6 +2,18 @@
 
 Cada plugin tiene su versión y cada publicación su tag `<plugin>--v<versión>`. Acá va lo que cambia para quien los usa.
 
+## 2026-10-18 — arch 1.0.2
+
+- arch-first: el contrato OpenAPI es el puerto de entrada de una API y se escribe antes que el controlador; cada regla de resiliencia y validación en su adaptador
+
+## 2026-10-18 — app-review 1.1.0
+
+- api-call-rules cubre backend en TypeScript, Python y C#: contrato OpenAPI primero, validación en el borde, reintentos solo idempotentes con Retry-After, circuit breaker con tráfico sostenido y logs estructurados con trace id; frontend-rules suma tipos generados del contrato, los cuatro estados de datos asíncronos y datos fuera de los componentes de presentación
+
+## 2026-10-18 — dev-flow 2.7.0
+
+- audit marca un endpoint que cambia sin tocar el contrato OpenAPI (P1), endpoints en repos sin contrato, logs planos en código de servicio, datos asíncronos sin estado de carga, error o vacío, y componentes de presentación que piden datos (P2)
+
 ## 2026-10-18 — dev-flow 2.6.0
 
 - init deja en CLAUDE.md la forma de trabajo (arranque, qué es terminado, alcance, cierre) y docs/STATE.md con Siguiente paso y Bloqueos, que rehydrate muestra al arrancar y primero tras /compact; stop-verify frena debugger, .only, fit y fdescribe agregados; dispatch next da el próximo paso de cada ticket con su comando (lanzar, reanudar, recoger, PR, auditar, decisión humana, cierre)

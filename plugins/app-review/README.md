@@ -11,8 +11,8 @@ claude plugin install app-review@ai-env
 | Pieza | Tipo | Activación | Qué hace |
 |---|---|---|---|
 | `app-architecture-review` | skill | auto | Revisa React, TypeScript y backend en tres lentes: identidad, seguridad y costo de llamadas a APIs (`references/identity.md`, `security.md`, `cost.md`). Se activa con "revisá este PR", "auditá esto" o cambios en autenticación, permisos o secretos |
-| `frontend-rules` | skill | auto, solo al tocar `**/*.tsx` | Reglas de seguridad para React: variables públicas, PKCE, tokens fuera de `localStorage`, HTML sin sanitizar, autorización del lado servidor |
-| `api-call-rules` | skill | auto, solo al tocar `**/*.ts` | Reglas para llamadas a APIs de Microsoft: caché y throttling, reintentos, managed identity, autorización por cliente |
+| `frontend-rules` | skill | auto, solo al tocar `**/*.tsx` | React: seguridad (variables públicas, PKCE, tokens fuera de `localStorage`, HTML sin sanitizar, autorización del lado servidor), tipos generados del contrato OpenAPI, los cuatro estados de datos asíncronos (cargando, error, vacío, con datos) y datos fuera de los componentes de presentación |
+| `api-call-rules` | skill | auto, al tocar `**/*.ts`, `**/*.py` o `**/*.cs` | Backend que expone o consume APIs: contrato OpenAPI antes del código, validación en el borde, timeout y reintentos solo idempotentes con `Retry-After`, circuit breaker cuando hay tráfico sostenido, logs estructurados con trace id (OpenTelemetry), managed identity y autorización por cliente |
 | `reviewer` | subagente | auto | Revisor independiente en contexto limpio para cambios de alto riesgo (identidad, permisos, secretos, APIs de Microsoft). Para antes de mergear o entregar, no para cada commit |
 | `explorer` | subagente | auto | Explorador de solo lectura: rastrea dónde se usa una credencial, endpoint o permiso y devuelve solo la conclusión, para no llenar tu contexto |
 

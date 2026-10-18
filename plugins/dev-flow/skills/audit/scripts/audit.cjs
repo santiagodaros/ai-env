@@ -6,6 +6,9 @@
 //   - inyeccion: SQL armado con concatenación o interpolación, exec/eval con datos, Invoke-Expression, innerHTML
 //   - esquema: cuerpo de request o JSON.parse sin validación de esquema en el archivo
 //   - tests: .only, .skip, aserciones triviales, pruebas sin aserciones, mock del propio módulo bajo prueba
+//   - contrato: endpoints que cambian sin tocar el contrato OpenAPI del repo (API primero)
+//   - logs: console.log/print en código de servicio (va un logger estructurado con la traza)
+//   - ui: componentes con datos asíncronos sin estado de carga, error o vacío; fetch en componentes de presentación
 // Más el escáner de seguridad del plugin (secretos, TLS desactivado, archivos sensibles) y la prueba de honestidad (las pruebas tienen que fallar sin el cambio).
 // Sale con 1 si hay P0, 0 si no. No reemplaza el juicio del auditor: le deja la evidencia.
 'use strict';
@@ -79,11 +82,47 @@ function scan(root, files) {
   return out;
 }
 
+// API primero, logs de servicio y estados de UI. Son señales para el auditor (P1 el contrato, P2 lo demás), no prueba de error.
+const ROUTE = /\b(?:app|router|server|fastify)\.(?:get|post|put|patch|delete)\s*\(\s*['"`]\/|@(?:Get|Post|Put|Patch|Delete)\s*\(|\[Http(?:Get|Post|Put|Patch|Delete)\b|@(?:app|router)\.(?:get|post|put|patch|delete)\s*\(|\.Map(?:Get|Post|Put|Patch|Delete)\s*\(|\bapp\.http\s*\(/;
+const CONTRACT = /(^|\/)(openapi|swagger)[\w.-]*\.(ya?ml|json)$/i;
+const SERVER = /from\s+['"](?:express|fastify|koa|hono|@nestjs\/\w+|@azure\/functions)['"]|require\(\s*['"](?:express|fastify|koa)['"]\s*\)|\bFastAPI\s*\(|\bFlask\s*\(|WebApplication\.CreateBuilder/;
+function apiAndUi(root, files) {
+  const out = [];
+  const tracked = spawnSync('git', ['ls-files'], { cwd: root, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 }).stdout.split('\n').filter(Boolean);
+  const contracts = tracked.filter((f) => CONTRACT.test(f));
+  const touched = Object.keys(files);
+  const read = (f) => { try { return fs.readFileSync(path.join(root, f), 'utf8'); } catch { return ''; } };
+  let routeAt = null;
+  for (const [file, lines] of Object.entries(files)) {
+    if (TEST.test(file)) continue;
+    const r = lines.find((ln) => ROUTE.test(ln.t));
+    if (r && !routeAt) routeAt = `${file}:${r.n}`;
+    const full = read(file);
+    if (/\.(m?[jt]s|py)$/.test(file) && !/(^|\/)(scripts?|bin|cli|tools)\//.test(file) && (SERVER.test(full) || /(^|\/)(api|server|functions|routes|controllers)\//.test(file))) {
+      const l = lines.find((ln) => /\bconsole\.(log|info|warn|error|debug)\s*\(|^\s*print\s*\(/.test(ln.t) && !/logger|secscan-allow/.test(ln.t));
+      if (l) out.push({ id: 'log-plano', area: 'observabilidad', severity: 'P2', where: `${file}:${l.n}`, issue: 'log plano en código de servicio: sin estructura ni trace id', fix: 'logger estructurado (JSON) con el trace id de la request (OpenTelemetry / Azure Monitor)' });
+    }
+    if (/\.[jt]sx$/.test(file)) {
+      if (/(^|\/)components\/(ui|atoms?|molecules?|primitives)\//.test(file)) {
+        const f = lines.find((ln) => /\bfetch\s*\(|\baxios\b|\buse(?:Query|SWR|Mutation)\s*\(/.test(ln.t));
+        if (f) out.push({ id: 'datos-en-presentacional', area: 'ui', severity: 'P2', where: `${file}:${f.n}`, issue: 'componente de presentación que trae datos', fix: 'pasar los datos por props; la llamada va en un hook o en el cliente de API' });
+      }
+      if (/\buse(?:Query|SWR|InfiniteQuery)\s*\(|\bfetch\s*\(|\baxios\./.test(full)) {
+        const miss = [!/isLoading|isPending|isFetching|\bloading\b|Skeleton|Suspense/.test(full) && 'carga', !/isError|\berror\b|ErrorBoundary/.test(full) && 'error', !/\.length\s*===?\s*0|!\s*\w+(\?\.)?\.length|isEmpty|Empty|sin resultados|no hay/i.test(full) && 'vacío'].filter(Boolean);
+        if (miss.length) out.push({ id: 'estados-async', area: 'ui', severity: 'P2', where: file, issue: `datos asíncronos sin estado de ${miss.join(', ')}`, fix: 'resolver los cuatro estados: cargando (esqueleto), error (mensaje y reintentar), vacío y con datos' });
+      }
+    }
+  }
+  if (routeAt && contracts.length && !touched.some((f) => CONTRACT.test(f))) out.push({ id: 'contrato-sin-actualizar', area: 'contrato', severity: 'P1', where: routeAt, issue: `cambia un endpoint y el contrato (${contracts[0]}) no se tocó`, fix: 'actualizar el contrato OpenAPI primero y validar la respuesta contra él en la prueba de integración' });
+  else if (routeAt && !contracts.length) out.push({ id: 'sin-contrato', area: 'contrato', severity: 'P2', where: routeAt, issue: 'endpoint nuevo o cambiado en un repo sin contrato OpenAPI', fix: 'proponer el contrato (docs/api/openapi.yaml) como decisión de arquitectura' });
+  return out;
+}
+
 function audit({ root, base = 'main', test, honestyOn = true }) {
   const mb = spawnSync('git', ['merge-base', base, 'HEAD'], { cwd: root, encoding: 'utf8' });
   if (mb.status !== 0) throw new Error(`No pude calcular la base contra ${base}. ¿Existe la rama? (git fetch origin ${base})`);
   const files = addedLines(root, mb.stdout.trim());
-  const findings = scan(root, files);
+  const findings = [...scan(root, files), ...apiAndUi(root, files)];
   const checks = [];
   // Escáner de seguridad del plugin (secretos, archivos sensibles, dependencias…)
   const sc = path.join(__dirname, '..', '..', 'security-diff', 'scripts', 'secscan.cjs');
@@ -121,4 +160,4 @@ if (require.main === module) {
     process.exit(r.findings.some((f) => f.severity === 'P0') ? 1 : 0);
   } catch (e) { console.error(e.message); process.exit(2); }
 }
-module.exports = { audit, scan };
+module.exports = { audit, scan, apiAndUi };

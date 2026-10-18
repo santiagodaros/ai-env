@@ -15,15 +15,15 @@ Los adaptadores no se importan entre sí. Entrada y salida solo se encuentran en
 
 | Tipo | Entrada | Salida | Nota |
 |---|---|---|---|
-| Página o app web | Componentes y rutas de la UI | Cliente de la API propia o de servicios | La lógica de pantalla que no es de negocio queda en el adaptador. Si hay backend en el mismo repo, cada app tiene su propio `architecture.json` (por ejemplo `apps/web` y `apps/api`) |
-| API o servicio | Controladores, colas, triggers | Base de datos, APIs externas, mensajería | Validación y autenticación en el adaptador de entrada |
+| Página o app web | Componentes y rutas de la UI | Cliente de la API propia o de servicios (con tipos generados del contrato) | Los componentes de presentación reciben props; los datos se piden en hooks o en el cliente de API. La lógica de pantalla que no es de negocio queda en el adaptador. Si hay backend en el mismo repo, cada app tiene su propio `architecture.json` (por ejemplo `apps/web` y `apps/api`) |
+| API o servicio | Controladores, colas, triggers | Base de datos, APIs externas, mensajería | El contrato OpenAPI (`docs/api/openapi.yaml`) es el puerto de entrada y se escribe antes que el controlador. Validación y autenticación en el adaptador de entrada; timeout, reintentos idempotentes y circuit breaker en el de salida; el logger estructurado se arma en config |
 | Automatización (PowerShell, Python) | Script de entrada o trigger programado | Azure CLI, Graph, ARM, archivos | La decisión ("qué remediar", "cómo clasificar") es dominio; llamar a Azure es adaptador. Incluí modo de simulación en acciones destructivas |
 | CLI | Comandos y argumentos | Lo mismo que arriba | El parseo de argumentos es adaptador |
 
 ## Pruebas
 - Dominio: unitarias, sin dobles.
 - Aplicación: puertos falsos en memoria.
-- Adaptadores: pruebas de contrato contra el puerto.
+- Adaptadores: pruebas de contrato contra el puerto; en una API, la respuesta se valida contra el contrato OpenAPI.
 - Una prueba de punta a punta por caso de uso importante.
 
 ## Errores comunes
