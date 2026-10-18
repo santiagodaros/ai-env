@@ -8,6 +8,7 @@
 //   node dispatch.cjs status [--json]  ·  collect --run <id> [--comment] [--show]
 //   node dispatch.cjs stats [--days 30] [--json]
 //   node dispatch.cjs plan set "12,13 | 14 | 15" [--goal "..."]  ·  plan show
+//   node dispatch.cjs next [--issue <N>] [--json]                          el próximo paso de cada ticket, con su comando
 //   node dispatch.cjs memory show [--role r] · memory propose · memory add --role r "lección"
 // Sin --launch es un dry-run. Antes de lanzar corre `harness check --pre`: no se lanza sobre una base rota.
 // Cada corrida copia los scripts del plugin a su carpeta (versión fijada: una actualización a mitad de camino no la rompe)
@@ -529,6 +530,7 @@ function collect() {
   // Solo una línea y rutas: el contenido vive en disco (regla anti teléfono descompuesto).
   console.log(oneLine(r));
   console.log(`  guardado: ${path.relative(root, dest)}${rec && rec.report ? ` · expediente: ${path.relative(root, path.join(rec.dir, rec.report))} · índice: ${path.relative(root, path.join(rec.dir, 'index.md'))}` : ''}`);
+  console.log(`  siguiente: node "${__filename}" next${r.issue ? ` --issue ${r.issue}` : ''}`);
   const noticed = (!verdict && r.result.noticed_out_of_scope) || [];
   if (noticed.length) console.log(`  visto y no tocado: ${noticed.length} (en el expediente; candidatos a ticket nuevo)`);
   if (has('--show')) console.log(`\n${md}`);
@@ -603,6 +605,71 @@ function planSummary(root, p) {
   return [`Plan${p.goal ? `: ${p.goal}` : ''} (actualizado ${String(p.updated).slice(0, 16).replace('T', ' ')})`, ...p.waves.map((w, i) => `  ola ${i + 1}: ${w.map((n) => `#${n} ${st(n)}`).join(' · ')}`), ...(q.length ? [`  en cola por presupuesto: ${q.map((n) => `#${n}`).join(', ')}`] : [])].join('\n') + '\n';
 }
 
+// Próximo paso por ticket, calculado desde el registro de corridas, las tarjetas y veredictos recogidos y (si hay gh)
+// los PRs. No lanza nada: imprime el comando exacto. Las paradas humanas no cambian (cada --launch pide confirmación,
+// el merge lo decide una persona). Así ningún paso del ciclo depende de que alguien se acuerde de pedirlo.
+function nextOf(root, n, ctx) {
+  const all = ctx.all.filter((r) => r.issue === n);
+  const impl = all.filter((r) => r.role !== 'auditor').sort((a, b) => b.at - a.at);
+  const aud = all.filter((r) => r.role === 'auditor').sort((a, b) => b.at - a.at);
+  const D = `node "${__filename}"`;
+  const T = `node "${path.join(__dirname, '..', '..', 'ticket', 'scripts', 'ticket.cjs')}"`;
+  const pr = ctx.prs.find((p) => new RegExp(`^(feat|fix|docs)/${n}-`).test(p.headRefName || '') || new RegExp(`\\b(close[sd]?|fix(e[sd])?|resolve[sd]?)\\s+#${n}\\b`, 'i').test(p.body || ''));
+  if (pr && (pr.state === 'MERGED' || pr.mergedAt)) return { n, state: 'mergeado', done: true };
+  const cardF = path.join(root, '.dev-flow', 'cards', `${n}.json`);
+  const collectedAt = (() => { try { return fs.statSync(cardF).mtimeMs; } catch { return 0; } })();
+  const a = aud[0];
+  if (a) {
+    if (a.state === 'corriendo') return { n, state: 'auditor corriendo', wait: true, cmd: `${D} status` };
+    const vF = path.join(root, '.dev-flow', 'verdicts', `${a.pr}.json`);
+    if (a.result && !fs.existsSync(vF)) return { n, state: 'veredicto sin recoger', cmd: `${D} collect --run ${a.id}` };
+    const v = a.result && a.result.verdict;
+    const newer = impl[0] && impl[0].at > a.at;
+    if (v === 'aprobar' && !newer) return { n, state: `aprobado (PR #${a.pr})`, human: true, cmd: `el merge del PR #${a.pr} lo decidís vos (checks en verde y veredicto a la vista)` };
+    if (v === 'bloquear' && !newer) return { n, state: `bloqueado por el auditor (PR #${a.pr})`, human: true, cmd: `discutir los hallazgos P0 antes de seguir: .dev-flow/verdicts/${a.pr}.json` };
+    if (v === 'cambios' && !newer) return { n, state: 'cambios pedidos por el auditor', cmd: `${D} run --issue ${n} --role implementer` };
+    if (!a.result && !newer) return { n, state: `auditoría ${a.state}`, cmd: `${D} run --pr ${a.pr} --role auditor` };
+  }
+  const i = impl[0];
+  if (!i) {
+    const dep = ctx.waveDeps(n).find((d) => !ctx.done(d));
+    if (dep) return { n, state: `espera a #${dep}`, wait: true };
+    return { n, state: ctx.queued.includes(n) ? 'en cola por presupuesto' : 'sin lanzar', cmd: `${D} run --issue ${n} --role implementer`, note: 'primero el dry-run; con tamaño L, antes los explorers (paso 6)' };
+  }
+  if (i.state === 'corriendo') return { n, state: 'worker corriendo', wait: true, cmd: `${D} status` };
+  if (!i.result) return { n, state: `worker ${i.state}`, cmd: `${D} resume --run ${i.id} --max-turns 40` };
+  if (collectedAt < i.at) return { n, state: 'tarjeta sin recoger', cmd: `${D} collect --run ${i.id}` };
+  if (!pr) {
+    let wt = ''; try { wt = worktreeMod().plan(root, i.worktree).dest; } catch { /* sin worktree */ }
+    return { n, state: 'tarjeta recogida, sin PR', cmd: `${wt ? `cd "${wt}" && ` : ''}${T} pr ${n} --card "${cardF}" --push` };
+  }
+  return { n, state: `PR #${pr.number} sin auditar`, cmd: `${D} run --pr ${pr.number} --role auditor` };
+}
+
+function next() {
+  const root = dossier.mainRoot(process.cwd());
+  const p = readJson(path.join(root, '.dev-flow', 'plan.json')) || { waves: [] };
+  const all = runs(root);
+  let prs = [], ghOk = true;
+  try { prs = ghJson(['pr', 'list', '--state', 'all', '--limit', '200', '--json', 'number,headRefName,body,state,mergedAt']) || []; } catch { ghOk = false; }
+  const waves = (p.waves || []).map((w) => w.map(Number));
+  const tickets = get('--issue') ? [Number(get('--issue'))] : [...new Set([...waves.flat(), ...all.map((r) => r.issue).filter(Boolean)])];
+  const ctx = { all, prs, queued: (p.queued || []).map(Number), waveDeps: (n) => { const k = waves.findIndex((w) => w.includes(n)); return k > 0 ? waves.slice(0, k).flat() : []; }, done: () => false };
+  const memo = {};
+  ctx.done = (n) => { if (!(n in memo)) { memo[n] = false; memo[n] = !!nextOf(root, n, ctx).done; } return memo[n]; };
+  const rows = tickets.map((n) => nextOf(root, n, ctx));
+  const closing = rows.length && rows.every((r) => r.done);
+  const H = `node "${path.join(__dirname, 'harness.cjs')}"`;
+  const close = closing ? `${`node "${path.join(__dirname, '..', '..', 'ticket', 'scripts', 'estado.cjs')}" --write`} && ${H} check --end && node "${path.join(__dirname, '..', '..', '..', 'hooks', 'worktree.cjs')}" gc --apply` : null;
+  if (has('--json')) { console.log(JSON.stringify({ rows, close, gh: ghOk }, null, 2)); return; }
+  if (!rows.length) { console.log('No hay tickets en el plan ni corridas. Empezá por: dispatch plan set "12,13 | 14" y ticket.cjs create <ID>.'); return; }
+  for (const r of rows) console.log(`#${String(r.n).padEnd(5)} ${r.state}${r.cmd && !r.done ? `\n        → ${r.cmd}${r.note ? `  (${r.note})` : ''}` : ''}`);
+  const first = rows.find((r) => r.cmd && !r.wait && !r.human && !r.done);
+  if (close) console.log(`\nTodo mergeado. Cierre: ${close}`);
+  else if (first) console.log(`\nSiguiente: ${first.cmd}`);
+  if (!ghOk) console.log('(sin gh: no se miraron los PRs; "sin PR" puede estar desactualizado)');
+}
+
 // Memoria por rol: lecciones cortas, aprobadas por una persona o el Tech Lead, que se suman al system prompt del rol.
 function memory() {
   const root = dossier.mainRoot(process.cwd());
@@ -649,7 +716,8 @@ if (require.main === module) {
     else if (cmd === 'stats') stats();
     else if (cmd === 'plan') plan();
     else if (cmd === 'memory') memory();
-    else { console.error('Uso: node dispatch.cjs run|resume|status|collect|stats|plan|memory (ver encabezado)'); process.exit(2); }
+    else if (cmd === 'next') next();
+    else { console.error('Uso: node dispatch.cjs run|resume|status|collect|stats|plan|memory|next (ver encabezado)'); process.exit(2); }
   } catch (e) { console.error(e.message); process.exit(1); }
 }
-module.exports = { prompt, runs, claudeCmd, scopeOf, overlap, planSummary };
+module.exports = { prompt, runs, claudeCmd, scopeOf, overlap, planSummary, nextOf };

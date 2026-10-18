@@ -85,7 +85,23 @@ function commandsBlock(det) {
     '<!-- commands:end -->', ''].join('\n');
 }
 
-const STATE_TEMPLATE = '# STATE\n\nEstado vivo del proyecto. El hook rehydrate lo reinyecta tras /compact.\n\n## Decisiones\n- \n\n## Hecho\n- \n\n## Pendiente\n- \n';
+const STATE_TEMPLATE = '# STATE\n\nEstado vivo del proyecto. Al arrancar una sesión, el hook rehydrate muestra el siguiente paso y los bloqueos; tras /compact, todo.\n\n## Siguiente paso\n- \n\n## Bloqueos\n- \n\n## Decisiones\n- \n\n## Hecho\n- \n\n## Pendiente\n- \n';
+// Forma de trabajo para Claude en este repo: corta y con lo que más pesa primero. Es lo único que se lee en cada
+// sesión aunque los plugins estén apagados; el resto vive en los archivos a los que apunta.
+function harnessBlock(det, stateRel) {
+  const pm = (det.packageManager || 'npm').split(' ')[0];
+  const checks = ['typecheck', 'lint', 'test'].filter((s) => det.scripts.includes(s)).map((s) => `${pm} run ${s}`);
+  return ['<!-- harness:start -->', '## Cómo trabajar en este repo',
+    `- **Al empezar:** leé \`${stateRel}\` (siguiente paso y bloqueos), mirá \`git status\` y corré la verificación. Si ya está en rojo, eso se arregla primero.`,
+    `- **Verificación:** ${checks.length ? `\`${checks.join(' && ')}\`` : 'no hay scripts todavía (ver la higiene pendiente en el STATE)'}.`,
+    '- **Terminado** = la verificación da 0 y la evidencia (comando y resultado) queda en el STATE o en la tarjeta. Que el código parezca bien no cuenta.',
+    '- **Una feature activa a la vez.** Tocá solo lo que pide la tarea; lo que veas mal afuera, anotalo en el STATE, no lo arregles.',
+    `- **Antes de cerrar:** ${stateRel} con lo hecho, el siguiente paso y los bloqueos; sin \`debugger\`, \`.only\` ni archivos temporales; árbol commiteado o el pendiente anotado.`,
+    '- **Nunca:** secretos, IDs de tenant ni nombres de `.private-terms` en archivos versionados; acciones destructivas sin confirmación.',
+    `- **Dónde está cada cosa:** \`${stateRel}\` (estado) · \`docs/PRD.md\` (qué construir, si existe) · \`docs/decisions/\` (por qué).`,
+    '<!-- harness:end -->', ''].join('\n');
+}
+
 const STATE_GENERATED = '\n## Estado generado desde GitHub\n\n<!-- estado:start -->\n(correr estado.cjs --write)\n<!-- estado:end -->\n';
 
 const AGENTS_BLOCK = ['<!-- agents:start -->', '## Forma de trabajo: Tech Lead y workers', '',
@@ -155,9 +171,13 @@ const STEPS = {
   },
   'claude-md'(ctx) {
     const cur = ctx.fs.read('CLAUDE.md');
-    if (cur !== null && cur.includes('<!-- commands:start -->')) return { status: 'nothing', reason: 'CLAUDE.md ya tiene el bloque de comandos' };
-    const block = commandsBlock(ctx.det);
-    return { status: 'would-do', actions: [{ path: 'CLAUDE.md', op: cur === null ? 'create' : 'append', desc: cur === null ? 'crear CLAUDE.md con los comandos reales del repo' : 'agregar al final de CLAUDE.md el bloque de comandos reales (tu texto queda igual)', content: cur === null ? `# ${path.basename(ctx.root)}\n\n${block}` : appendText(cur, block).slice(cur.length) }] };
+    const stateRel = ctx.fs.read('docs/STATE.md') === null && ctx.fs.read('docs/ESTADO.md') !== null ? 'docs/ESTADO.md' : 'docs/STATE.md';
+    const hasCmd = cur !== null && cur.includes('<!-- commands:start -->');
+    const hasHarness = cur !== null && cur.includes('<!-- harness:start -->');
+    if (hasCmd && hasHarness) return { status: 'nothing', reason: 'CLAUDE.md ya tiene la forma de trabajo y los comandos' };
+    const block = [hasHarness ? '' : harnessBlock(ctx.det, stateRel), hasCmd ? '' : commandsBlock(ctx.det)].filter(Boolean).join('\n');
+    const what = [!hasHarness && 'la forma de trabajo (arranque, terminado, alcance, cierre)', !hasCmd && 'los comandos reales'].filter(Boolean).join(' y ');
+    return { status: 'would-do', actions: [{ path: 'CLAUDE.md', op: cur === null ? 'create' : 'append', desc: cur === null ? `crear CLAUDE.md con ${what}` : `agregar al final de CLAUDE.md ${what} (tu texto queda igual)`, content: cur === null ? `# ${path.basename(ctx.root)}\n\n${block}` : appendText(cur, block).slice(cur.length) }] };
   },
   state(ctx) {
     // Un solo archivo de estado para los dos modos: docs/STATE.md. En modo Tech Lead lleva además el bloque que
@@ -398,6 +418,7 @@ function verify(root) {
   }
   const cm = read('CLAUDE.md');
   add(cm && cm.includes('<!-- commands:start -->') ? 'OK' : 'AVISO', 'CLAUDE.md con el bloque de comandos');
+  add(cm && cm.includes('<!-- harness:start -->') ? 'OK' : 'AVISO', 'CLAUDE.md con la forma de trabajo (arranque, terminado, cierre)');
   if (read('.claude/dev-flow.json') !== null) {
     add(cm && cm.includes('@AGENTS.md') ? 'OK' : 'AVISO', 'CLAUDE.md importa AGENTS.md (modo Tech Lead)');
     add(read('docs/PRD.md') !== null ? 'OK' : 'AVISO', 'docs/PRD.md existe');

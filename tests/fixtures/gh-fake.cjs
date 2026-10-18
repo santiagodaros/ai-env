@@ -42,7 +42,7 @@ if (a[0] === 'pr' && a[1] === 'create') {
 }
 if (a[0] === 'pr' && a[1] === 'list') {
   const s = (opt('--state') || 'open').toUpperCase();
-  out(st.prs.filter((p) => p.state === s).map((p) => ({ ...p, reviewDecision: p.reviewDecision || '', mergedAt: p.mergedAt || null })));
+  out(st.prs.filter((p) => s === 'ALL' || p.state === s).map((p) => ({ ...p, reviewDecision: p.reviewDecision || '', mergedAt: p.mergedAt || null })));
 }
 if (a[0] === 'pr' && a[1] === 'view') { const p = st.prs.find((x) => x.number === Number(a[2])); out({ ...p, baseRefName: 'main', files: [] }); }
 if (a[0] === 'pr' && a[1] === 'diff') out(process.env.FAKE_GH_DIFF || '');

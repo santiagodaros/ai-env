@@ -13,7 +13,7 @@ Scripts: `D="${CLAUDE_PLUGIN_ROOT}/skills/dispatch/scripts"` → `node "$D/dispa
 
 ## Ciclo
 
-1. **Estado real** (nunca de memoria): `ticket.cjs status`, `dispatch.cjs status`, `dispatch.cjs plan show`. Los workers que terminaron te llegan solos como aviso al principio de cada mensaje (hook `lead-notify`).
+1. **Estado real** (nunca de memoria): `node "${CLAUDE_PLUGIN_ROOT}/skills/dispatch/scripts/dispatch.cjs" next` da el próximo paso de cada ticket con su comando exacto (lanzar, reanudar, recoger, abrir el PR, auditar, o la decisión que es tuya: merge o hallazgos a discutir) y, con todo mergeado, el cierre. Seguí ese comando, no la memoria. Detalle: `ticket.cjs status`, `dispatch.cjs status`, `dispatch.cjs plan show`. Los workers que terminaron te llegan solos como aviso al principio de cada mensaje (hook `lead-notify`).
 2. **Salud del arnés**: `node "${CLAUDE_PLUGIN_ROOT}/skills/dispatch/scripts/harness.cjs" check --pre`. `dispatch run` lo corre igual y no lanza sobre una base en rojo.
 3. **Plan**: `prd.cjs check` y `list`. Proponé los tickets y su orden, y guardalo: `dispatch.cjs plan set "12,13 | 14 | 15" --goal "…"` (oleadas; una oleada = tickets independientes). Se reinyecta tras compactar. Pedí confirmación antes de crear issues.
 4. **Tickets**: `ticket.cjs create <ID>`. El issue es el brief completo del worker: rebanada del PRD, criterios, **Alcance** (archivos), **Fuera de alcance**, **Dependencias** y **Tamaño** (de las líneas `Archivos:`, `Fuera de alcance:`, `Depende de:`, `Tamaño:` de la sección del PRD).

@@ -997,6 +997,7 @@ require('./quick-risk.cjs')({ check, add });
 require('./brownfield.cjs')({ check, add });
 require('./hardening.cjs')({ check, add });
 require('./idea-lab.cjs')({ check, add });
+require('./session.cjs')({ check, add });
 
 // --- Perfiles de plugins (shared/profiles.json, instaladores)
 require('./profiles.cjs')({ check, add });

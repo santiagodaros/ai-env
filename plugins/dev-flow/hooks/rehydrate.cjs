@@ -48,13 +48,18 @@ process.stdin.on('end', () => {
 
   let stateRel = 'docs/STATE.md';
   try { stateRel = config.load(config.repoRoot(cwd)).state || stateRel; } catch { /* config inválida: valor por defecto */ }
+  // "Siguiente paso" y "Bloqueos" del STATE van primero: es lo que una sesión necesita para arrancar sin preguntar.
+  const section = (t, name) => { const m = String(t).match(new RegExp(`^##\\s+${name}\\s*\\n([\\s\\S]*?)(?=^##\\s|(?![\\s\\S]))`, 'mi')); const b = m ? m[1].trim() : ''; return b.replace(/^[-*]\s*$/gm, '').trim(); };
+  const restart = (t) => { const n = section(t, 'Siguiente paso'), b = section(t, 'Bloqueos'); return [n && `Siguiente paso:\n${n}`, b && `Bloqueos:\n${b}`].filter(Boolean).join('\n\n').slice(0, 1500); };
+  const state = read(path.join(cwd, ...stateRel.split('/')));
   if (source === 'compact') {
-    const state = read(path.join(cwd, ...stateRel.split('/')));
     if (state) {
+      const r = restart(state);
       out.push(
         `La conversación acaba de compactarse. Este es el estado del proyecto (${stateRel}). ` +
           'Si algo del resumen automático lo contradice, gana el STATE. ' +
           'Antes de seguir, resumí en 5 líneas lo entendido y pedí confirmación.\n\n' +
+          (r ? `${r}\n\n---\n\n` : '') +
           state.slice(0, MAX) + (state.length > MAX ? '\n[STATE truncado: mover lo histórico a docs/STATE-archive.md]' : '')
       );
     }
@@ -86,7 +91,7 @@ process.stdin.on('end', () => {
       if (plan && Array.isArray(plan.waves) && plan.waves.length) {
         const ds = path.join(__dirname, '..', 'skills', 'dispatch', 'scripts', 'dispatch.cjs');
         const r = spawnSync(process.execPath, [ds, 'plan', 'show'], { cwd: config.repoRoot(cwd), encoding: 'utf8', timeout: 8000 });
-        if (r.status === 0 && r.stdout.trim()) out.push(`Plan del Tech Lead (.dev-flow/plan.json). Seguí desde la primera ola con tickets sin cerrar; el estado real está en dispatch status y ticket status.\n\n${r.stdout.trim()}`);
+        if (r.status === 0 && r.stdout.trim()) out.push(`Plan del Tech Lead (.dev-flow/plan.json). Seguí desde la primera ola con tickets sin cerrar. El próximo paso de cada ticket, con su comando: dispatch next.\n\n${r.stdout.trim()}`);
       }
     } catch { /* sin plan */ }
   }
@@ -124,6 +129,12 @@ process.stdin.on('end', () => {
           etapa + `## HANDOFF\n${handoff.slice(0, MAX / 2)}\n\n## STATE\n${state.slice(0, MAX / 2)}`
       );
     }
+  }
+
+  // Arranque sin feature ni ticket: solo el siguiente paso y los bloqueos del proyecto (corto; el STATE entero va tras /compact).
+  if (source !== 'compact' && !out.length && state) {
+    const r = restart(state);
+    if (r) out.push(`Estado del proyecto (${stateRel}) al arrancar:\n\n${r}`);
   }
 
   if (out.length) process.stdout.write(out.join('\n\n---\n\n') + '\n');

@@ -2,6 +2,10 @@
 
 Cada plugin tiene su versión y cada publicación su tag `<plugin>--v<versión>`. Acá va lo que cambia para quien los usa.
 
+## 2026-10-18 — dev-flow 2.5.0
+
+- init deja en CLAUDE.md la forma de trabajo (arranque, qué es terminado, alcance, cierre) y docs/STATE.md con Siguiente paso y Bloqueos, que rehydrate muestra al arrancar y primero tras /compact; stop-verify frena debugger, .only, fit y fdescribe agregados; dispatch next da el próximo paso de cada ticket con su comando (lanzar, reanudar, recoger, PR, auditar, decisión humana, cierre)
+
 ## 2026-10-18 — idea-lab 1.0.0
 
 - Plugin nuevo: /idea-lab:shape lleva una idea chica a una idea definida (preguntas cerradas, mercado con fuentes por subagentes scout, 16 ángulos que decide idea.cjs check, escéptico en frío, comunicado y preguntas, preview.html) y termina con la decisión de la persona; /idea-lab:plan arma el plan de product engineer (validar primero, no-gos, rebanadas, hitos usables, métricas, salida a producción) y genera el PRD en el formato de /dev-flow:prd. En todos los perfiles. Catálogo del README generado y chequeado en CI

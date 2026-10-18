@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Stop: antes de que Claude dé el turno por terminado, corre typecheck y lint si hubo cambios de código.
+// Stop: antes de que Claude dé el turno por terminado, si hubo cambios de código: frena restos de depuración en las
+// líneas agregadas (debugger, .only, fit, fdescribe) y corre typecheck y lint.
 // exit 2 = Claude no puede terminar y recibe el error. Bloquea como máximo una vez por turno (stop_hook_active).
 // Usa `npm run <script> --if-present`: si no existe el script, se saltea.
 // Para desactivarlo: AI_ENV_HOOKS_SKIP=stop-verify, o {"stopVerify": false} en .claude/dev-flow.json del proyecto.
@@ -14,7 +15,6 @@ run('stop-verify', (input) => {
   if (input.stop_hook_active) process.exit(0); // ya bloqueó una vez en este turno: no entrar en bucle
 
   const cwd = projectDir(input);
-  if (!fs.existsSync(path.join(cwd, 'package.json'))) process.exit(0);
   try { if (JSON.parse(fs.readFileSync(path.join(cwd, '.claude', 'dev-flow.json'), 'utf8')).stopVerify === false) process.exit(0); } catch { /* sin config: activo */ }
 
   // ¿Hubo cambios de código?
@@ -27,7 +27,26 @@ run('stop-verify', (input) => {
   if (changed.length === 0) process.exit(0);
 
   const failures = [];
-  for (const script of ['typecheck', 'lint']) {
+  // Restos de depuración en lo que se agregó (archivos seguidos: diff contra HEAD; nuevos: el archivo entero).
+  // Una línea se excluye con el comentario "stop-verify-allow".
+  const DEBUG = [[/(^|[;{}\s])debugger\s*;?\s*($|\/\/)/, 'debugger'], [/\b(it|test|describe|context)\.only\s*\(/, '.only('], [/(^|[^\w.])(fit|fdescribe|xit|xdescribe)\s*\(/, 'fit/fdescribe/xit']];
+  const added = [];
+  const diff = spawnSync('git', ['diff', 'HEAD', '--unified=0', '--no-color', '--', ...changed], { cwd, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
+  let file = null, ln = 0;
+  for (const l of (diff.status === 0 ? diff.stdout : '').split('\n')) {
+    if (l.startsWith('+++ ')) { file = l.slice(4).replace(/^b\//, ''); continue; }
+    const h = l.match(/^@@ -\d+(?:,\d+)? \+(\d+)/); if (h) { ln = Number(h[1]); continue; }
+    if (file && l.startsWith('+') && !l.startsWith('+++')) added.push([file, ln++, l.slice(1)]);
+  }
+  const untracked = st.stdout.split('\n').filter((l) => l.startsWith('?? ')).map((l) => l.slice(3).trim().replace(/^"|"$/g, '')).filter((f) => changed.includes(f));
+  for (const f of untracked) { try { fs.readFileSync(path.join(cwd, f), 'utf8').split('\n').forEach((t, i) => added.push([f, i + 1, t])); } catch { /* ilegible */ } }
+  // Dentro de un string no cuenta (fixtures de pruebas que escriben "it.only(" a propósito): comillas impares antes del hallazgo.
+  const inString = (t, i) => ['\'', '"', '`'].some((q) => (t.slice(0, i).split(q).length - 1) % 2 === 1);
+  const debug = added.filter(([, , t]) => !/stop-verify-allow/.test(t)).map(([f, n, t]) => { const hit = DEBUG.find(([re]) => { const m = t.match(re); return m && !inString(t, m.index + m[0].search(/[a-z.]/i)); }); return hit ? `${f}:${n}: ${hit[1]}` : null; }).filter(Boolean);
+  if (debug.length) failures.push(`restos de depuración en lo que agregaste (sacalos; si uno es a propósito, marcá la línea con "stop-verify-allow"):\n${debug.slice(0, 10).join('\n')}`);
+  if (!fs.existsSync(path.join(cwd, 'package.json')) && !failures.length) process.exit(0);
+
+  for (const script of fs.existsSync(path.join(cwd, 'package.json')) ? ['typecheck', 'lint'] : []) {
     const r = spawnSync('npm', ['run', script, '--if-present', '--silent'], {
       cwd,
       encoding: 'utf8',

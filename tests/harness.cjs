@@ -186,6 +186,9 @@ console.log(JSON.stringify({type:'result',subtype:'success',is_error:false,total
     fs.writeFileSync(outF, out0);
     run(DS, ['collect', '--run', runId], { cwd: r4, env: env4 });
   } else check('dispatch collect: la corrida dejó out.json con la tarjeta para probar el alcance', false);
+  const nx = (args = []) => { const x = run(DS, ['next', ...args, '--json'], { cwd: r4, env: env4 }); try { return JSON.parse(x.out); } catch { return { rows: [], raw: x.out }; } };
+  let nj = nx(['--issue', '1']);
+  check('dispatch next: con la tarjeta recogida y sin PR, el siguiente paso es abrir el PR desde el worktree', nj.rows[0] && nj.rows[0].state === 'tarjeta recogida, sin PR' && /ticket\.cjs" pr 1 --card/.test(nj.rows[0].cmd || ''), JSON.stringify(nj).slice(0, 300));
 
   // Reanudar: la misma sesión, en el mismo worktree, desde progress.md.
   const wtPath = require(H('worktree.cjs')).plan(r4, 'feat-1-resta').dest;
